@@ -10,12 +10,10 @@ from typing import Dict, List, Tuple, Optional, Any
 from datetime import datetime
 import tempfile
 import imagehash
-from openai import OpenAI
-
-# the newest OpenAI model is "gpt-5" which was released August 7, 2025.
-# do not change this unless explicitly requested by the user
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key")
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+import hashlib
+import re
+from collections import Counter
+import math
 
 class AIAnalysisSystem:
     def __init__(self):
@@ -24,84 +22,71 @@ class AIAnalysisSystem:
         self.supported_video_formats = ['.mp4', '.avi', '.mov', '.mkv']
         
     def analyze_image_with_ai(self, image_data: bytes, analysis_type: str = "comprehensive") -> Dict:
-        """Analyze image using AI for various purposes"""
+        """Analyze image using local computer vision and pattern recognition"""
         try:
-            # Convert image to base64 for API
-            base64_image = base64.b64encode(image_data).decode('utf-8')
+            # Convert bytes to OpenCV image
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            analysis_prompts = {
-                "comprehensive": """
-                Analyze this image comprehensively for investigative purposes. Focus on:
-                1. People: Count, descriptions, activities, clothing, interactions
-                2. Objects: Weapons, vehicles, suspicious items, evidence
-                3. Environment: Location type, lighting conditions, time indicators
-                4. Activities: What's happening, suspicious behavior, timeline clues
-                5. Anomalies: Anything unusual, out of place, or potentially relevant to an investigation
-                Provide detailed observations in JSON format with confidence scores.
-                """,
-                
-                "surveillance": """
-                Analyze this image from a surveillance perspective. Look for:
-                1. Security threats or suspicious activities
-                2. Person identification features (clothing, physical characteristics)
-                3. Vehicle information (license plates, make/model, color)
-                4. Behavioral patterns that might indicate criminal activity
-                5. Environmental factors that could affect investigation
-                Respond with JSON containing findings and confidence levels.
-                """,
-                
-                "forensic": """
-                Perform forensic analysis of this image. Examine:
-                1. Evidence of tampering or manipulation
-                2. Digital artifacts or compression issues
-                3. Metadata inconsistencies visible in the image
-                4. Timeline indicators (clocks, shadows, weather)
-                5. Potential evidence items or traces
-                Provide forensic assessment in JSON format with analysis confidence.
-                """,
-                
-                "anomaly_detection": """
-                Detect anomalies and unusual elements in this image:
-                1. Objects that don't belong in the scene
-                2. Inconsistent lighting or shadows
-                3. Image quality inconsistencies
-                4. Suspicious modifications or alterations
-                5. Unusual patterns or behaviors
-                Return JSON with anomaly descriptions and severity levels.
-                """
+            # Perform comprehensive computer vision analysis
+            analysis_result = {
+                'analysis_type': analysis_type,
+                'timestamp': datetime.now().isoformat(),
+                'model_used': 'Local Computer Vision',
+                'findings': {},
+                'confidence_scores': {},
+                'technical_analysis': {}
             }
             
-            prompt = analysis_prompts.get(analysis_type, analysis_prompts["comprehensive"])
+            # Basic image properties
+            height, width = gray.shape
+            analysis_result['technical_analysis']['image_dimensions'] = {'width': width, 'height': height}
+            analysis_result['technical_analysis']['image_size'] = len(image_data)
             
-            response = openai_client.chat.completions.create(
-                model="gpt-5",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-                            }
-                        ]
-                    }
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=1000
-            )
+            # Color analysis
+            color_analysis = self._analyze_colors(image)
+            analysis_result['findings']['color_analysis'] = color_analysis
+            analysis_result['confidence_scores']['color_analysis'] = 0.9
             
-            analysis_result = json.loads(response.choices[0].message.content)
+            # Object detection using OpenCV
+            objects_detected = self.detect_objects_opencv(image_data)
+            analysis_result['findings']['object_detection'] = objects_detected
+            analysis_result['confidence_scores']['object_detection'] = 0.8
             
-            # Add metadata
-            analysis_result['analysis_type'] = analysis_type
-            analysis_result['timestamp'] = datetime.now().isoformat()
-            analysis_result['model_used'] = 'gpt-5'
+            # Edge and texture analysis
+            edge_analysis = self._analyze_edges_and_texture(gray)
+            analysis_result['findings']['edge_texture_analysis'] = edge_analysis
+            analysis_result['confidence_scores']['edge_texture_analysis'] = 0.85
+            
+            # Brightness and contrast analysis
+            lighting_analysis = self._analyze_lighting(gray)
+            analysis_result['findings']['lighting_analysis'] = lighting_analysis
+            analysis_result['confidence_scores']['lighting_analysis'] = 0.9
+            
+            # Specific analysis based on type
+            if analysis_type == "surveillance":
+                surveillance_analysis = self._perform_surveillance_analysis(image, gray)
+                analysis_result['findings']['surveillance_specific'] = surveillance_analysis
+                analysis_result['confidence_scores']['surveillance_specific'] = 0.75
+            
+            elif analysis_type == "forensic":
+                forensic_analysis = self._perform_forensic_analysis(image, gray)
+                analysis_result['findings']['forensic_specific'] = forensic_analysis
+                analysis_result['confidence_scores']['forensic_specific'] = 0.8
+            
+            elif analysis_type == "anomaly_detection":
+                anomaly_analysis = self._detect_anomalies(image, gray)
+                analysis_result['findings']['anomaly_specific'] = anomaly_analysis
+                analysis_result['confidence_scores']['anomaly_specific'] = 0.7
+            
+            # Generate summary
+            analysis_result['summary'] = self._generate_analysis_summary(analysis_result)
             
             return analysis_result
             
         except Exception as e:
-            st.error(f"AI image analysis failed: {str(e)}")
+            st.error(f"Local image analysis failed: {str(e)}")
             return {'error': str(e), 'analysis_type': analysis_type}
     
     def analyze_video_with_ai(self, video_data: bytes, frame_interval: int = 30) -> List[Dict]:
@@ -128,7 +113,7 @@ class AIAnalysisSystem:
                     _, buffer = cv2.imencode('.jpg', frame)
                     frame_bytes = buffer.tobytes()
                     
-                    # Analyze frame
+                    # Analyze frame using local analysis
                     timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
                     
                     frame_analysis = self.analyze_image_with_ai(frame_bytes, "surveillance")
@@ -307,8 +292,8 @@ class AIAnalysisSystem:
                     'description': 'Image appears to have unnatural smoothing which may indicate editing'
                 })
             
-            # Use AI for advanced manipulation detection
-            ai_analysis = self.analyze_image_with_ai(image_data, "forensic")
+            # Use local analysis for advanced manipulation detection
+            local_forensic_analysis = self._perform_local_forensic_analysis(image, gray)
             
             result = {
                 'manipulation_indicators': manipulation_indicators,
@@ -318,8 +303,8 @@ class AIAnalysisSystem:
                     'smoothness_score': smoothness,
                     'variance_std': variance_std if block_variances else None
                 },
-                'ai_forensic_analysis': ai_analysis,
-                'overall_risk_level': self._calculate_manipulation_risk(manipulation_indicators, ai_analysis),
+                'local_forensic_analysis': local_forensic_analysis,
+                'overall_risk_level': self._calculate_manipulation_risk_local(manipulation_indicators, local_forensic_analysis),
                 'timestamp': datetime.now().isoformat()
             }
             
@@ -330,7 +315,7 @@ class AIAnalysisSystem:
             return {'error': str(e)}
     
     def _calculate_manipulation_risk(self, indicators: List[Dict], ai_analysis: Dict) -> str:
-        """Calculate overall manipulation risk level"""
+        """Calculate overall manipulation risk level (legacy method)"""
         risk_score = 0
         
         # Technical indicators
@@ -340,11 +325,14 @@ class AIAnalysisSystem:
         risk_score += high_confidence_indicators * 3
         risk_score += medium_confidence_indicators * 1
         
-        # AI analysis contribution
+        # Local analysis contribution (replacing AI analysis)
         if 'error' not in ai_analysis and ai_analysis.get('findings'):
-            ai_findings = ai_analysis.get('findings', {})
-            if 'tampering' in str(ai_findings).lower() or 'manipulation' in str(ai_findings).lower():
-                risk_score += 2
+            local_findings = ai_analysis.get('findings', {})
+            if isinstance(local_findings, dict):
+                if local_findings.get('compression_artifacts', {}).get('unusual_patterns', False):
+                    risk_score += 2
+                if local_findings.get('noise_pattern', {}).get('inconsistent', False):
+                    risk_score += 1
         
         # Determine risk level
         if risk_score >= 6:
@@ -357,56 +345,28 @@ class AIAnalysisSystem:
             return 'Minimal'
     
     def analyze_suspicious_activity(self, image_data: bytes) -> Dict:
-        """Analyze image for suspicious activities and behaviors"""
+        """Analyze image for suspicious activities and behaviors using local analysis"""
         try:
-            # Use AI for suspicious activity detection
-            prompt = """
-            Analyze this image for potentially suspicious activities or behaviors. Look for:
-            1. Criminal activities (theft, assault, drug dealing, vandalism)
-            2. Suspicious behaviors (loitering, surveillance, unusual gatherings)
-            3. Security threats (weapons, dangerous items, threatening gestures)
-            4. Traffic violations or dangerous driving behaviors
-            5. Unusual or out-of-place activities for the environment
+            # Convert bytes to OpenCV image
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            For each finding, provide:
-            - Activity description
-            - Confidence level (0-1)
-            - Severity level (low/medium/high)
-            - Reasoning for the assessment
-            
-            Respond in JSON format with detailed findings.
-            """
-            
-            base64_image = base64.b64encode(image_data).decode('utf-8')
-            
-            response = openai_client.chat.completions.create(
-                model="gpt-5",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-                            }
-                        ]
-                    }
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=800
-            )
-            
-            analysis_result = json.loads(response.choices[0].message.content)
-            
-            # Add computer vision analysis
+            # Use computer vision analysis
             cv_analysis = self.detect_objects_opencv(image_data)
+            
+            # Analyze for suspicious patterns
+            suspicious_patterns = self._detect_suspicious_patterns(image, gray)
+            
+            # Motion analysis (if multiple faces/objects detected)
+            motion_analysis = self._analyze_potential_motion(gray)
             
             # Combine results
             result = {
-                'ai_suspicious_activity_analysis': analysis_result,
+                'local_suspicious_activity_analysis': suspicious_patterns,
                 'computer_vision_detections': cv_analysis,
-                'overall_threat_level': self._assess_threat_level(analysis_result),
+                'motion_indicators': motion_analysis,
+                'overall_threat_level': self._assess_threat_level_local(suspicious_patterns, cv_analysis),
                 'timestamp': datetime.now().isoformat(),
                 'analysis_type': 'suspicious_activity'
             }
@@ -418,7 +378,7 @@ class AIAnalysisSystem:
             return {'error': str(e)}
     
     def _assess_threat_level(self, analysis_result: Dict) -> str:
-        """Assess overall threat level based on analysis results"""
+        """Assess overall threat level based on analysis results (legacy method)"""
         threat_score = 0
         
         findings = analysis_result.get('findings', [])
@@ -487,6 +447,467 @@ class AIAnalysisSystem:
         
         status_text.text("Batch analysis complete!")
         return results
+    
+    def _analyze_colors(self, image: np.ndarray) -> Dict:
+        """Analyze color distribution and properties"""
+        try:
+            # Convert to different color spaces
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            
+            # Calculate histograms
+            hist_b = cv2.calcHist([image], [0], None, [256], [0, 256])
+            hist_g = cv2.calcHist([image], [1], None, [256], [0, 256])
+            hist_r = cv2.calcHist([image], [2], None, [256], [0, 256])
+            
+            # Calculate dominant colors
+            dominant_colors = self._get_dominant_colors(image, k=5)
+            
+            # Calculate color variance
+            color_variance = {
+                'blue': float(np.var(image[:,:,0])),
+                'green': float(np.var(image[:,:,1])),
+                'red': float(np.var(image[:,:,2]))
+            }
+            
+            return {
+                'dominant_colors': dominant_colors,
+                'color_variance': color_variance,
+                'avg_brightness': float(np.mean(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))),
+                'color_diversity': len(np.unique(image.reshape(-1, image.shape[2]), axis=0))
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _get_dominant_colors(self, image: np.ndarray, k: int = 5) -> List[List[int]]:
+        """Get dominant colors using basic clustering"""
+        try:
+            # Reshape image to be a list of pixels
+            data = image.reshape((-1, 3))
+            data = np.float32(data)
+            
+            # Sample for performance
+            if len(data) > 10000:
+                indices = np.random.choice(len(data), 10000, replace=False)
+                data = data[indices]
+            
+            # Simple k-means clustering approximation
+            # Use quantization instead of full k-means for performance
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
+            _, labels, centers = cv2.kmeans(data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+            
+            # Convert back to uint8
+            centers = np.uint8(centers)
+            
+            return centers.tolist()
+        except Exception:
+            # Fallback: return simple color averages
+            return []
+    
+    def _analyze_edges_and_texture(self, gray: np.ndarray) -> Dict:
+        """Analyze edges and texture patterns"""
+        try:
+            # Edge detection
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size
+            
+            # Texture analysis using Laplacian variance
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            
+            # Calculate gradient magnitude
+            grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+            grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+            magnitude = np.sqrt(grad_x**2 + grad_y**2)
+            avg_gradient = np.mean(magnitude)
+            
+            return {
+                'edge_density': float(edge_density),
+                'texture_sharpness': float(laplacian_var),
+                'average_gradient': float(avg_gradient),
+                'edge_count': int(np.sum(edges > 0))
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _analyze_lighting(self, gray: np.ndarray) -> Dict:
+        """Analyze lighting conditions"""
+        try:
+            # Basic lighting statistics
+            mean_brightness = np.mean(gray)
+            brightness_std = np.std(gray)
+            
+            # Histogram analysis
+            hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+            
+            # Calculate lighting uniformity
+            # Divide image into grid and analyze variance
+            h, w = gray.shape
+            grid_size = 8
+            grid_variances = []
+            
+            for i in range(0, h, h//grid_size):
+                for j in range(0, w, w//grid_size):
+                    if i+h//grid_size < h and j+w//grid_size < w:
+                        block = gray[i:i+h//grid_size, j:j+w//grid_size]
+                        grid_variances.append(np.var(block))
+            
+            lighting_uniformity = 1.0 / (1.0 + np.std(grid_variances)) if grid_variances else 0
+            
+            return {
+                'mean_brightness': float(mean_brightness),
+                'brightness_std': float(brightness_std),
+                'lighting_uniformity': float(lighting_uniformity),
+                'dynamic_range': float(np.max(gray) - np.min(gray))
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _perform_surveillance_analysis(self, image: np.ndarray, gray: np.ndarray) -> Dict:
+        """Perform surveillance-specific analysis"""
+        try:
+            analysis = {}
+            
+            # Motion blur detection (approximate)
+            kernel = np.ones((1, 15), np.float32) / 15
+            motion_blur = cv2.filter2D(gray, -1, kernel)
+            motion_score = np.mean(np.abs(gray.astype(float) - motion_blur.astype(float)))
+            analysis['motion_blur_score'] = float(motion_score)
+            
+            # Crowd density estimation (rough approximation)
+            # Use contour detection as proxy for objects/people
+            edges = cv2.Canny(gray, 50, 150)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            person_sized_objects = len([c for c in contours if cv2.contourArea(c) > 500])
+            analysis['estimated_object_count'] = person_sized_objects
+            
+            # Lighting quality for surveillance
+            analysis['surveillance_lighting_quality'] = 'good' if 50 < np.mean(gray) < 200 else 'poor'
+            
+            return analysis
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _perform_forensic_analysis(self, image: np.ndarray, gray: np.ndarray) -> Dict:
+        """Perform forensic-specific analysis"""
+        try:
+            analysis = {}
+            
+            # JPEG artifact detection
+            # Look for 8x8 block patterns typical of JPEG compression
+            block_artifacts = self._detect_block_artifacts(gray)
+            analysis['jpeg_artifacts'] = block_artifacts
+            
+            # Noise pattern analysis
+            noise_pattern = self._analyze_noise_pattern(gray)
+            analysis['noise_analysis'] = noise_pattern
+            
+            # Timestamp consistency (rough check)
+            # Look for digital overlay patterns
+            analysis['has_potential_timestamp'] = self._detect_digital_overlay(gray)
+            
+            return analysis
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _detect_anomalies(self, image: np.ndarray, gray: np.ndarray) -> Dict:
+        """Detect visual anomalies"""
+        try:
+            anomalies = []
+            
+            # Unusual brightness regions
+            mean_brightness = np.mean(gray)
+            bright_threshold = mean_brightness + 2 * np.std(gray)
+            dark_threshold = mean_brightness - 2 * np.std(gray)
+            
+            bright_regions = np.sum(gray > bright_threshold)
+            dark_regions = np.sum(gray < dark_threshold)
+            
+            if bright_regions > 0.1 * gray.size:
+                anomalies.append({
+                    'type': 'unusual_bright_regions',
+                    'severity': 'medium',
+                    'description': 'Large areas with unusual brightness detected'
+                })
+            
+            if dark_regions > 0.1 * gray.size:
+                anomalies.append({
+                    'type': 'unusual_dark_regions',
+                    'severity': 'medium',
+                    'description': 'Large areas with unusual darkness detected'
+                })
+            
+            # Edge discontinuities
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size
+            
+            if edge_density > 0.3:
+                anomalies.append({
+                    'type': 'high_edge_density',
+                    'severity': 'low',
+                    'description': 'Unusually high number of edges detected'
+                })
+            
+            return {'anomalies': anomalies, 'anomaly_count': len(anomalies)}
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _generate_analysis_summary(self, analysis_result: Dict) -> str:
+        """Generate a human-readable summary"""
+        try:
+            findings = analysis_result.get('findings', {})
+            summary_parts = []
+            
+            # Color analysis summary
+            if 'color_analysis' in findings:
+                color_data = findings['color_analysis']
+                if 'avg_brightness' in color_data:
+                    brightness = color_data['avg_brightness']
+                    if brightness > 180:
+                        summary_parts.append("Image appears bright and well-lit.")
+                    elif brightness < 80:
+                        summary_parts.append("Image appears dark with low lighting.")
+                    else:
+                        summary_parts.append("Image has moderate lighting conditions.")
+            
+            # Object detection summary
+            if 'object_detection' in findings:
+                obj_data = findings['object_detection']
+                if obj_data.get('faces', {}).get('count', 0) > 0:
+                    face_count = obj_data['faces']['count']
+                    summary_parts.append(f"Detected {face_count} face(s) in the image.")
+            
+            # Edge and texture summary
+            if 'edge_texture_analysis' in findings:
+                edge_data = findings['edge_texture_analysis']
+                if edge_data.get('edge_density', 0) > 0.2:
+                    summary_parts.append("Image contains high detail with many edges and textures.")
+                elif edge_data.get('edge_density', 0) < 0.05:
+                    summary_parts.append("Image appears smooth with minimal texture detail.")
+            
+            return " ".join(summary_parts) if summary_parts else "Analysis completed with standard results."
+        
+        except Exception:
+            return "Summary generation failed."
+    
+    def _detect_suspicious_patterns(self, image: np.ndarray, gray: np.ndarray) -> Dict:
+        """Detect patterns that might indicate suspicious activity"""
+        try:
+            patterns = []
+            
+            # Detect clustering of objects/people
+            contours, _ = cv2.findContours(cv2.Canny(gray, 50, 150), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            large_contours = [c for c in contours if cv2.contourArea(c) > 1000]
+            
+            if len(large_contours) > 5:
+                patterns.append({
+                    'type': 'crowd_gathering',
+                    'confidence': 0.6,
+                    'description': 'Multiple large objects or people detected in close proximity'
+                })
+            
+            # Detect unusual movement patterns (blur analysis)
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            if laplacian_var < 100:
+                patterns.append({
+                    'type': 'motion_blur',
+                    'confidence': 0.7,
+                    'description': 'Image shows signs of motion blur, indicating fast movement'
+                })
+            
+            return {'patterns': patterns, 'pattern_count': len(patterns)}
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _analyze_potential_motion(self, gray: np.ndarray) -> Dict:
+        """Analyze indicators of motion in the image"""
+        try:
+            # Motion blur detection using Laplacian variance
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            
+            # Gradient analysis for directional blur
+            grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+            grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+            
+            motion_indicators = {
+                'blur_score': float(laplacian_var),
+                'is_blurry': laplacian_var < 100,
+                'horizontal_motion': float(np.mean(np.abs(grad_x))),
+                'vertical_motion': float(np.mean(np.abs(grad_y)))
+            }
+            
+            return motion_indicators
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _assess_threat_level_local(self, suspicious_patterns: Dict, cv_analysis: Dict) -> str:
+        """Assess threat level based on local analysis"""
+        try:
+            threat_score = 0
+            
+            # Suspicious patterns contribution
+            patterns = suspicious_patterns.get('patterns', [])
+            for pattern in patterns:
+                confidence = pattern.get('confidence', 0)
+                if pattern.get('type') == 'crowd_gathering':
+                    threat_score += confidence * 2
+                elif pattern.get('type') == 'motion_blur':
+                    threat_score += confidence * 1
+            
+            # Face detection contribution
+            face_count = cv_analysis.get('faces', {}).get('count', 0)
+            if face_count > 10:
+                threat_score += 1.5
+            elif face_count > 5:
+                threat_score += 1.0
+            
+            # Determine threat level
+            if threat_score >= 3.0:
+                return 'High'
+            elif threat_score >= 1.5:
+                return 'Medium'
+            elif threat_score >= 0.5:
+                return 'Low'
+            else:
+                return 'Minimal'
+        except Exception:
+            return 'Unknown'
+    
+    def _perform_local_forensic_analysis(self, image: np.ndarray, gray: np.ndarray) -> Dict:
+        """Perform local forensic analysis"""
+        try:
+            analysis = {}
+            
+            # Digital artifact detection
+            analysis['compression_artifacts'] = self._detect_compression_artifacts(gray)
+            analysis['noise_pattern'] = self._analyze_noise_pattern(gray)
+            analysis['edge_consistency'] = self._analyze_edge_consistency(gray)
+            
+            return analysis
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _calculate_manipulation_risk_local(self, indicators: List[Dict], forensic_analysis: Dict) -> str:
+        """Calculate manipulation risk using local analysis"""
+        try:
+            risk_score = 0
+            
+            # Technical indicators
+            high_confidence_indicators = len([i for i in indicators if i.get('confidence', 0) > 0.7])
+            risk_score += high_confidence_indicators * 2
+            
+            # Forensic analysis contribution
+            if forensic_analysis.get('compression_artifacts', {}).get('unusual_patterns', False):
+                risk_score += 1
+            if forensic_analysis.get('noise_pattern', {}).get('inconsistent', False):
+                risk_score += 1
+            
+            # Determine risk level
+            if risk_score >= 4:
+                return 'High'
+            elif risk_score >= 2:
+                return 'Medium'
+            elif risk_score >= 1:
+                return 'Low'
+            else:
+                return 'Minimal'
+        except Exception:
+            return 'Unknown'
+    
+    def _detect_block_artifacts(self, gray: np.ndarray) -> Dict:
+        """Detect JPEG block artifacts"""
+        try:
+            # Analyze 8x8 blocks for JPEG artifacts
+            h, w = gray.shape
+            block_variances = []
+            
+            for y in range(0, h-8, 8):
+                for x in range(0, w-8, 8):
+                    block = gray[y:y+8, x:x+8]
+                    block_variances.append(np.var(block))
+            
+            if block_variances:
+                variance_std = np.std(block_variances)
+                return {
+                    'block_variance_std': float(variance_std),
+                    'has_artifacts': variance_std < 20
+                }
+            
+            return {'block_variance_std': 0, 'has_artifacts': False}
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _analyze_noise_pattern(self, gray: np.ndarray) -> Dict:
+        """Analyze noise patterns in the image"""
+        try:
+            # Estimate noise using Gaussian blur difference
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            noise = gray.astype(float) - blurred.astype(float)
+            noise_std = np.std(noise)
+            
+            return {
+                'noise_level': float(noise_std),
+                'is_noisy': noise_std > 10
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _detect_digital_overlay(self, gray: np.ndarray) -> bool:
+        """Detect potential digital overlays like timestamps"""
+        try:
+            # Look for consistent rectangular regions with high contrast
+            edges = cv2.Canny(gray, 50, 150)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Look for rectangular contours that might be text overlays
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if area > 100:  # Minimum size for text
+                    # Check if contour is roughly rectangular
+                    hull = cv2.convexHull(contour)
+                    hull_area = cv2.contourArea(hull)
+                    if area / hull_area > 0.8:  # Roughly rectangular
+                        return True
+            
+            return False
+        except Exception:
+            return False
+    
+    def _detect_compression_artifacts(self, gray: np.ndarray) -> Dict:
+        """Detect compression artifacts"""
+        try:
+            # Simple compression artifact detection
+            # Look for blocking artifacts typical of lossy compression
+            artifacts = self._detect_block_artifacts(gray)
+            
+            return {
+                'unusual_patterns': artifacts.get('has_artifacts', False),
+                'compression_score': artifacts.get('block_variance_std', 0)
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _analyze_edge_consistency(self, gray: np.ndarray) -> Dict:
+        """Analyze edge consistency for manipulation detection"""
+        try:
+            edges = cv2.Canny(gray, 50, 150)
+            
+            # Analyze edge density in different regions
+            h, w = gray.shape
+            regions = [
+                edges[0:h//2, 0:w//2],  # Top-left
+                edges[0:h//2, w//2:w],  # Top-right
+                edges[h//2:h, 0:w//2],  # Bottom-left
+                edges[h//2:h, w//2:w]   # Bottom-right
+            ]
+            
+            edge_densities = [np.sum(region > 0) / region.size for region in regions]
+            edge_variance = np.var(edge_densities)
+            
+            return {
+                'edge_consistency': float(1.0 / (1.0 + edge_variance)),
+                'edge_variance': float(edge_variance)
+            }
+        except Exception as e:
+            return {'error': str(e)}
     
     def generate_ai_analysis_report(self, analysis_results: List[Dict]) -> Dict:
         """Generate comprehensive AI analysis report"""

@@ -16,8 +16,15 @@ class FacialRecognitionSystem:
         self.face_tolerance = 0.6
         self.temp_dir = tempfile.mkdtemp()
         # Initialize OpenCV face detection
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        self.eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+        try:
+            self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            self.eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+        except AttributeError:
+            # Fallback for systems where cv2.data is not available
+            import os
+            cascade_path = os.path.join(cv2.__path__[0], 'data')
+            self.face_cascade = cv2.CascadeClassifier(os.path.join(cascade_path, 'haarcascade_frontalface_default.xml'))
+            self.eye_cascade = cv2.CascadeClassifier(os.path.join(cascade_path, 'haarcascade_eye.xml'))
     
     def detect_faces_in_image(self, image_data: bytes) -> Tuple[List, List, List]:
         """Detect faces in image and return locations, face features, and face images"""
