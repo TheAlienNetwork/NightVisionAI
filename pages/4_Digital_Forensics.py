@@ -152,9 +152,22 @@ with tab1:
                         for i, file_info in enumerate(selected_files):
                             status_text.text(f"Analyzing {file_info['filename']}...")
                             
-                            # In a real implementation, load file data from disk
-                            # For now, simulate analysis
-                            file_data = b''  # Would load actual file data here
+                            # Load actual file data from disk
+                            try:
+                                if file_info.get('file_path') and os.path.exists(file_info['file_path']):
+                                    with open(file_info['file_path'], 'rb') as f:
+                                        file_data = f.read()
+                                else:
+                                    # Try to find file in evidence directory
+                                    evidence_path = f"evidence/case_{file_info.get('case_id', 1)}/{file_info['filename']}"
+                                    if os.path.exists(evidence_path):
+                                        with open(evidence_path, 'rb') as f:
+                                            file_data = f.read()
+                                    else:
+                                        file_data = b''  # Empty if file not found
+                            except Exception as e:
+                                st.warning(f"Could not load file data for {file_info['filename']}: {str(e)}")
+                                file_data = b''
                             
                             if analyze_metadata:
                                 # Extract metadata

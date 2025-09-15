@@ -582,7 +582,7 @@ def get_case_activity_log(case_id: int, limit: int = 50) -> List[Dict]:
             LIMIT %s
         """
         params = (case_id, limit)
-    
+
     result = execute_query(query, params, fetch=True)
     return result or []
 
@@ -819,7 +819,7 @@ def display_dashboard():
     if not selected_case:
         st.warning("Selected case not found.")
         return
-    
+
     case_id = selected_case['id']
     st.subheader(f"Case: {selected_case['name']}")
     st.write(f"Description: {selected_case['description']}")
@@ -849,13 +849,67 @@ def display_dashboard():
                     st.json(json.loads(file_info['metadata']) if isinstance(file_info['metadata'], str) else file_info['metadata'])
                 if file_info['hash_value']:
                     st.write(f"Hash: {file_info['hash_value']}")
-                
+
                 # Button to trigger AI analysis if not processed
                 if not file_info['processed']:
                     if st.button(f"Analyze {file_info['filename']} with AI", key=f"analyze_{file_info['id']}"):
                         try:
                             analysis_results = analyze_file_with_ai(file_info['file_path'])
+
+                            # Add forensics results (e.g., metadata extraction)
+                            # This part needs to be carefully integrated with file analysis
+                            # For now, let's assume metadata is extracted and we're storing it.
+                            # A more robust solution would involve separate functions for each analysis type.
                             
+                            # Placeholder for metadata extraction and storing in forensics_results
+                            # In a real scenario, you would call specific functions here to extract metadata,
+                            # perform integrity checks, timeline analysis, etc.
+                            # For this example, we'll simulate saving some basic info.
+                            
+                            # --- Begin simulated forensics data storage ---
+                            simulated_metadata_extracted = {
+                                "file_name": file_info['filename'],
+                                "file_size": file_info['file_size'],
+                                "file_type": file_info['file_type'],
+                                "detected_hashes": {
+                                    "MD5": "d41d8cd98f00b204e9800998ecf8427e", # Example hash
+                                    "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" # Example hash
+                                }
+                            }
+                            
+                            simulated_timeline_data = [
+                                {"timestamp": datetime.now().isoformat(), "event": "File Uploaded"}
+                            ]
+
+                            # Store in database
+                            if USE_SQLITE:
+                                forensics_query = """
+                                    INSERT INTO forensics_results 
+                                    (file_id, metadata_extracted, file_analysis, timeline_data, created_at)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """
+                                execute_query(forensics_query, (
+                                    file_info['id'], 
+                                    json.dumps(simulated_metadata_extracted),
+                                    json.dumps({'analysis_type': 'metadata_extraction'}),
+                                    json.dumps(simulated_timeline_data),
+                                    datetime.now()
+                                ))
+                            else:
+                                forensics_query = """
+                                    INSERT INTO forensics_results 
+                                    (file_id, metadata_extracted, file_analysis, timeline_data, created_at)
+                                    VALUES (%s, %s, %s, %s, %s)
+                                """
+                                execute_query(forensics_query, (
+                                    file_info['id'], 
+                                    json.dumps(simulated_metadata_extracted),
+                                    json.dumps({'analysis_type': 'metadata_extraction'}),
+                                    json.dumps(simulated_timeline_data),
+                                    datetime.now()
+                                ))
+                            # --- End simulated forensics data storage ---
+
                             # Add AI analysis results to the database
                             ai_query = """
                                 INSERT INTO ai_analysis (file_id, analysis_type, results, confidence_score, anomalies_detected)
@@ -868,17 +922,14 @@ def display_dashboard():
                                 analysis_results.get("confidence_score"),
                                 json.dumps(analysis_results.get("anomalies_detected"))
                             )
-                            
+
                             if USE_SQLITE:
                                 conn = get_connection()
                                 if conn:
                                     cur = conn.cursor()
                                     cur.execute(ai_query, ai_params)
                                     conn.commit()
-                                    cur.close()
-                                    conn.close()
                                     # Mark file as processed
-                                    cur = conn.cursor()
                                     cur.execute("UPDATE evidence_files SET processed = 1 WHERE id = ?", (file_info['id'],))
                                     conn.commit()
                                     cur.close()
@@ -894,7 +945,7 @@ def display_dashboard():
                                 execute_query("UPDATE evidence_files SET processed = TRUE WHERE id = %s", (file_info['id'],))
                                 st.success(f"Analysis complete for {file_info['filename']}. Results saved.")
                                 st.experimental_rerun() # Rerun to reflect processed status
-                                
+
                         except Exception as e:
                             st.error(f"Error analyzing file {file_info['filename']}: {str(e)}")
                 elif file_info['processed']:
@@ -907,8 +958,19 @@ def display_dashboard():
                                 st.write(f"Confidence: {res['confidence_score']:.2f}")
                                 st.write(f"Anomalies: {', '.join(json.loads(res['anomalies_detected'])) if res['anomalies_detected'] else 'None'}")
                                 st.json(json.loads(res['results']) if isinstance(res['results'], str) else res['results'])
+                    # Display forensics results as well
+                    forensics_results = get_forensics_results_for_file(file_info['id'])
+                    if forensics_results:
+                        for res in forensics_results:
+                            with st.expander(f"Forensics Analysis Results ({res.get('analysis_type', 'N/A')})"):
+                                st.subheader("Extracted Metadata")
+                                st.json(json.loads(res['metadata_extracted']) if res['metadata_extracted'] else {})
+                                st.subheader("File Analysis")
+                                st.json(json.loads(res['file_analysis']) if res['file_analysis'] else {})
+                                st.subheader("Timeline Data")
+                                st.json(json.loads(res['timeline_data']) if res['timeline_data'] else {})
                     else:
-                        st.write("No AI analysis results found for this file.")
+                        st.write("No analysis results found for this file.")
 
 
     st.markdown("---")
@@ -928,9 +990,22 @@ def get_ai_analysis_for_file(file_id: int) -> List[Dict]:
     else:
         query = "SELECT * FROM ai_analysis WHERE file_id = %s"
         params = (file_id,)
-    
+
     results = execute_query(query, params, fetch=True)
     return results or []
+
+def get_forensics_results_for_file(file_id: int) -> List[Dict]:
+    """Get forensics analysis results for a specific file"""
+    if USE_SQLITE:
+        query = "SELECT * FROM forensics_results WHERE file_id = ?"
+        params = (file_id,)
+    else:
+        query = "SELECT * FROM forensics_results WHERE file_id = %s"
+        params = (file_id,)
+
+    results = execute_query(query, params, fetch=True)
+    return results or []
+
 
 def upload_file_section():
     """Section for uploading files"""
@@ -949,35 +1024,35 @@ def upload_file_section():
 
     if uploaded_files:
         st.write(f"Processing {len(uploaded_files)} file(s) for case ID: {case_id}...")
-        
+
         uploaded_file_details = []
         for uploaded_file in uploaded_files:
             filename = uploaded_file.name
             file_type = get_file_type(filename)
             file_size = uploaded_file.size
-            
+
             # Define a directory to save uploaded files
             upload_dir = "uploads"
             if not os.path.exists(upload_dir):
                 os.makedirs(upload_dir)
-            
+
             file_path = os.path.join(upload_dir, filename)
-            
+
             try:
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-                
+
                 file_hash = get_file_hash(file_path)
-                
+
                 metadata = {
                     "original_filename": filename,
                     "file_type": file_type,
                     "file_size": file_size,
                     "upload_timestamp": datetime.now().isoformat()
                 }
-                
+
                 new_file_id = add_evidence_file(case_id, filename, file_type, file_size, file_path, metadata, file_hash)
-                
+
                 if new_file_id:
                     st.success(f"'{filename}' uploaded and saved successfully (ID: {new_file_id}).")
                     log_case_activity(case_id, "file_upload", f"Uploaded file: {filename}", metadata={"file_id": new_file_id, "filename": filename})
@@ -985,7 +1060,7 @@ def upload_file_section():
                 else:
                     st.error(f"Failed to save '{filename}' to the database.")
                     uploaded_file_details.append({"filename": filename, "status": "Database Error"})
-                    
+
             except Exception as e:
                 st.error(f"Error processing file '{filename}': {str(e)}")
                 uploaded_file_details.append({"filename": filename, "status": f"Error: {str(e)}"})
@@ -1028,14 +1103,14 @@ def main():
         st.header("Search Database")
         search_term = st.text_input("Enter search term")
         search_type = st.selectbox("Search in", ["all", "cases", "evidence", "incidents", "suspects"])
-        
+
         if st.button("Search"):
             if search_term:
                 results = search_database(search_term, search_type)
-                
+
                 if any(results.values()):
                     st.subheader("Search Results")
-                    
+
                     if results['cases']:
                         st.write("**Cases:**")
                         for case in results['cases']:
@@ -1059,7 +1134,7 @@ def main():
                             st.write(f"- {incident['incident_type']} at {incident['address']} (Case: {incident['case_name']})")
                             if st.button("View Incident", key=f"view_incident_{incident['id']}"):
                                 st.warning(f"Details for incident ID: {incident['id']} (Type: {incident['incident_type']})")
-                                
+
                     if results['suspects']:
                         st.write("**Suspects:**")
                         for suspect in results['suspects']:
