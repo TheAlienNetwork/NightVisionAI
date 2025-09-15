@@ -26,6 +26,8 @@ dependencies = [
     "py7zr>=1.0.0",
     "rarfile>=4.2",
     "pypdf2>=3.0.1",
+    "scikit-image>=0.25.2",
+    "scipy>=1.16.2",
 ]
 
 [[tool.uv.index]]

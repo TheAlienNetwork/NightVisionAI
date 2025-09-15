@@ -1,13 +1,16 @@
 import streamlit as st
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import os
 import json
 from typing import List, Dict, Tuple, Optional
 import tempfile
 from datetime import datetime
 import io
+from scipy import ndimage
+import skimage
+from skimage import exposure, restoration, filters
 
 class FacialRecognitionSystem:
     def __init__(self):
@@ -27,7 +30,7 @@ class FacialRecognitionSystem:
             self.eye_cascade = cv2.CascadeClassifier(os.path.join(cascade_path, 'haarcascade_eye.xml'))
     
     def detect_faces_in_image(self, image_data: bytes) -> Tuple[List, List, List]:
-        """Detect faces in image using multiple advanced AI methods"""
+        """Detect faces in image using multiple advanced AI methods with photo enhancement"""
         try:
             # Convert bytes to OpenCV image
             nparr = np.frombuffer(image_data, np.uint8)
@@ -37,20 +40,28 @@ class FacialRecognitionSystem:
                 st.error("Could not decode image")
                 return [], [], []
             
-            # Try multiple detection methods
+            # Apply advanced photo enhancement before detection
+            enhanced_images = self._enhance_photo_for_face_detection(original_image)
+            
+            # Try multiple detection methods on enhanced images
             all_faces = []
             
-            # Method 1: Enhanced Haar Cascade with preprocessing
-            faces_haar = self._detect_with_haar_enhanced(original_image)
-            all_faces.extend(faces_haar)
-            
-            # Method 2: DNN-based face detection
-            faces_dnn = self._detect_with_dnn(original_image)
-            all_faces.extend(faces_dnn)
-            
-            # Method 3: Template matching for partial faces
-            faces_template = self._detect_with_template_matching(original_image)
-            all_faces.extend(faces_template)
+            for enhanced_img in enhanced_images:
+                # Method 1: Enhanced Haar Cascade with preprocessing
+                faces_haar = self._detect_with_haar_enhanced(enhanced_img)
+                all_faces.extend(faces_haar)
+                
+                # Method 2: DNN-based face detection
+                faces_dnn = self._detect_with_dnn(enhanced_img)
+                all_faces.extend(faces_dnn)
+                
+                # Method 3: Template matching for partial faces
+                faces_template = self._detect_with_template_matching(enhanced_img)
+                all_faces.extend(faces_template)
+                
+                # Method 4: AI-powered region analysis
+                faces_ai = self._ai_region_analysis(enhanced_img)
+                all_faces.extend(faces_ai)
             
             # Remove duplicates and merge overlapping detections
             unique_faces = self._merge_overlapping_faces(all_faces)
@@ -63,34 +74,28 @@ class FacialRecognitionSystem:
                 # Convert to face_recognition format (top, right, bottom, left)
                 face_locations.append((y, x + w, y + h, x))
                 
-                # Extract face region with padding
-                padding = max(10, min(w, h) // 10)
-                x_start = max(0, x - padding)
-                y_start = max(0, y - padding)
-                x_end = min(original_image.shape[1], x + w + padding)
-                y_end = min(original_image.shape[0], y + h + padding)
-                
-                face_region = original_image[y_start:y_end, x_start:x_end]
+                # Extract and enhance face region
+                enhanced_face = self._extract_and_enhance_face(original_image, x, y, w, h)
                 
                 # Enhanced feature extraction
-                features = self._extract_enhanced_features(face_region, w, h)
+                features = self._extract_enhanced_features(enhanced_face, w, h)
                 face_features.append(features)
-                face_images.append(face_region)
+                face_images.append(enhanced_face)
             
             if len(unique_faces) > 0:
                 st.success(f"Successfully detected {len(unique_faces)} face(s) using advanced AI methods")
             else:
-                st.warning("No faces detected. Trying alternative detection methods...")
+                st.warning("No faces detected. Trying ultra-aggressive detection methods...")
                 # Try very aggressive detection as last resort
-                fallback_faces = self._aggressive_face_detection(original_image)
+                fallback_faces = self._ultra_aggressive_face_detection(original_image)
                 if fallback_faces:
                     st.info(f"Found {len(fallback_faces)} potential face(s) using fallback detection")
                     for (x, y, w, h) in fallback_faces:
                         face_locations.append((y, x + w, y + h, x))
-                        face_region = original_image[y:y+h, x:x+w]
-                        features = self._extract_enhanced_features(face_region, w, h)
+                        enhanced_face = self._extract_and_enhance_face(original_image, x, y, w, h)
+                        features = self._extract_enhanced_features(enhanced_face, w, h)
                         face_features.append(features)
-                        face_images.append(face_region)
+                        face_images.append(enhanced_face)
             
             return face_locations, face_features, face_images
             
@@ -199,50 +204,427 @@ class FacialRecognitionSystem:
         
         return faces
     
-    def _aggressive_face_detection(self, image):
-        """Very aggressive face detection as last resort"""
+    def _enhance_photo_for_face_detection(self, image):
+        """Apply multiple enhancement techniques to improve face detection"""
+        enhanced_images = []
+        
+        try:
+            # 1. Original image
+            enhanced_images.append(image.copy())
+            
+            # 2. Histogram equalization
+            img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+            img_yuv[:,:,0] = cv2.equalizeHist(img_yuv[:,:,0])
+            hist_eq = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2BGR)
+            enhanced_images.append(hist_eq)
+            
+            # 3. CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            clahe_img = clahe.apply(gray)
+            clahe_bgr = cv2.cvtColor(clahe_img, cv2.COLOR_GRAY2BGR)
+            enhanced_images.append(clahe_bgr)
+            
+            # 4. Gamma correction
+            gamma_corrected = self._adjust_gamma(image, gamma=0.7)
+            enhanced_images.append(gamma_corrected)
+            
+            # 5. Brightness and contrast enhancement
+            bright_contrast = cv2.convertScaleAbs(image, alpha=1.3, beta=20)
+            enhanced_images.append(bright_contrast)
+            
+            # 6. Noise reduction with edge preservation
+            denoised = cv2.bilateralFilter(image, 9, 75, 75)
+            enhanced_images.append(denoised)
+            
+            # 7. Sharpening
+            kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+            sharpened = cv2.filter2D(image, -1, kernel)
+            enhanced_images.append(sharpened)
+            
+            # 8. AI-based enhancement using PIL
+            pil_enhanced = self._pil_ai_enhancement(image)
+            if pil_enhanced is not None:
+                enhanced_images.append(pil_enhanced)
+            
+        except Exception as e:
+            st.warning(f"Some enhancements failed: {str(e)}")
+        
+        return enhanced_images
+    
+    def _adjust_gamma(self, image, gamma=1.0):
+        """Apply gamma correction to image"""
+        inv_gamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        return cv2.LUT(image, table)
+    
+    def _pil_ai_enhancement(self, cv_image):
+        """Use PIL for AI-based image enhancement"""
+        try:
+            # Convert CV2 to PIL
+            rgb_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+            pil_image = Image.fromarray(rgb_image)
+            
+            # Apply multiple PIL enhancements
+            enhancers = [
+                (ImageEnhance.Contrast, 1.2),
+                (ImageEnhance.Brightness, 1.1),
+                (ImageEnhance.Sharpness, 1.3),
+                (ImageEnhance.Color, 1.1)
+            ]
+            
+            enhanced = pil_image
+            for enhancer_class, factor in enhancers:
+                enhancer = enhancer_class(enhanced)
+                enhanced = enhancer.enhance(factor)
+            
+            # Apply filter for noise reduction
+            enhanced = enhanced.filter(ImageFilter.MedianFilter(size=3))
+            
+            # Convert back to CV2 format
+            enhanced_array = np.array(enhanced)
+            return cv2.cvtColor(enhanced_array, cv2.COLOR_RGB2BGR)
+            
+        except Exception:
+            return None
+    
+    def _ai_region_analysis(self, image):
+        """AI-powered region analysis for face detection"""
         faces = []
         
         try:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            # Use very relaxed parameters
-            detected = self.face_cascade.detectMultiScale(
-                gray, 
-                scaleFactor=1.05, 
-                minNeighbors=1,  # Very low threshold
-                minSize=(15, 15),  # Very small minimum size
-                maxSize=(gray.shape[0], gray.shape[1])
-            )
-            faces.extend(detected)
+            # Use edge detection to find regions of interest
+            edges = cv2.Canny(gray, 30, 100)
             
-            # Try with different image enhancements
-            # Gaussian blur
-            blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-            detected_blur = self.face_cascade.detectMultiScale(
-                blurred, 1.05, 1, minSize=(15, 15)
-            )
-            faces.extend(detected_blur)
+            # Morphological operations to connect edges
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            dilated = cv2.dilate(edges, kernel, iterations=2)
+            eroded = cv2.erode(dilated, kernel, iterations=1)
             
-            # Brightness adjustment
-            bright = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
-            detected_bright = self.face_cascade.detectMultiScale(
-                bright, 1.05, 1, minSize=(15, 15)
-            )
-            faces.extend(detected_bright)
+            # Find contours
+            contours, _ = cv2.findContours(eroded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-            # If still no faces, analyze the entire image as potential face region
-            if not faces:
-                h, w = gray.shape
-                # Consider the central region as a potential face
-                center_w, center_h = w // 3, h // 3
-                center_x, center_y = w // 3, h // 3
-                faces.append((center_x, center_y, center_w, center_h))
-        
-        except Exception as e:
+            for contour in contours:
+                # Get bounding rectangle
+                x, y, w, h = cv2.boundingRect(contour)
+                area = cv2.contourArea(contour)
+                
+                # Check if region could be a face
+                aspect_ratio = w / h if h > 0 else 0
+                rect_area = w * h
+                
+                # Advanced criteria for face-like regions
+                if (0.4 <= aspect_ratio <= 2.5 and 
+                    area > 500 and 
+                    rect_area > 800 and
+                    w > 25 and h > 25 and
+                    area / rect_area > 0.3):  # Contour fills enough of the rectangle
+                    
+                    # Additional validation using local features
+                    roi = gray[y:y+h, x:x+w]
+                    if self._validate_face_region(roi):
+                        faces.append((x, y, w, h))
+            
+        except Exception:
             pass
         
         return faces
+    
+    def _validate_face_region(self, roi):
+        """Validate if a region likely contains a face using feature analysis"""
+        try:
+            if roi.size < 100:
+                return False
+            
+            # Check for eye-like regions (dark spots in upper half)
+            h, w = roi.shape
+            upper_half = roi[:h//2, :]
+            
+            # Apply threshold to find dark regions
+            _, thresh = cv2.threshold(upper_half, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # Find contours in upper half (potential eyes)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Check for 1-3 dark regions in upper half (eyes, nose)
+            valid_contours = 0
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if 10 < area < (w * h) // 20:  # Reasonable size for facial features
+                    valid_contours += 1
+            
+            # Check gradient distribution (faces have varied gradients)
+            grad_x = cv2.Sobel(roi, cv2.CV_64F, 1, 0, ksize=3)
+            grad_y = cv2.Sobel(roi, cv2.CV_64F, 0, 1, ksize=3)
+            gradient_magnitude = np.sqrt(grad_x**2 + grad_y**2)
+            gradient_variance = np.var(gradient_magnitude)
+            
+            return (valid_contours >= 1 and 
+                   gradient_variance > 100 and  # Sufficient texture variation
+                   np.mean(roi) > 20)  # Not too dark
+        
+        except Exception:
+            return False
+    
+    def _extract_and_enhance_face(self, image, x, y, w, h):
+        """Extract face region and apply resolution enhancement"""
+        try:
+            # Calculate enhanced crop region with smart padding
+            padding_factor = 0.3  # 30% padding
+            padding_x = int(w * padding_factor)
+            padding_y = int(h * padding_factor)
+            
+            # Ensure padding doesn't go outside image bounds
+            x_start = max(0, x - padding_x)
+            y_start = max(0, y - padding_y)
+            x_end = min(image.shape[1], x + w + padding_x)
+            y_end = min(image.shape[0], y + h + padding_y)
+            
+            # Extract face region
+            face_region = image[y_start:y_end, x_start:x_end]
+            
+            if face_region.size == 0:
+                return image[y:y+h, x:x+w]
+            
+            # Apply resolution enhancement
+            enhanced_face = self._enhance_face_resolution(face_region)
+            
+            # Apply face-specific enhancements
+            final_face = self._apply_face_specific_enhancements(enhanced_face)
+            
+            return final_face
+            
+        except Exception as e:
+            # Fallback to simple extraction
+            return image[y:y+h, x:x+w] if y+h <= image.shape[0] and x+w <= image.shape[1] else image
+    
+    def _enhance_face_resolution(self, face_image):
+        """Enhance face resolution using AI-like upscaling techniques"""
+        try:
+            h, w = face_image.shape[:2]
+            
+            # If face is too small, apply intelligent upscaling
+            if w < 100 or h < 100:
+                # Calculate scale factor
+                target_size = 150
+                scale_x = target_size / w
+                scale_y = target_size / h
+                scale_factor = min(scale_x, scale_y, 4.0)  # Cap at 4x upscaling
+                
+                if scale_factor > 1.0:
+                    new_w = int(w * scale_factor)
+                    new_h = int(h * scale_factor)
+                    
+                    # Use LANCZOS for high-quality upscaling
+                    upscaled = cv2.resize(face_image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+                    
+                    # Apply sharpening after upscaling
+                    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+                    sharpened = cv2.filter2D(upscaled, -1, kernel)
+                    
+                    return sharpened
+            
+            return face_image
+            
+        except Exception:
+            return face_image
+    
+    def _apply_face_specific_enhancements(self, face_image):
+        """Apply enhancements specifically optimized for facial features"""
+        try:
+            # Convert to LAB color space for better processing
+            lab = cv2.cvtColor(face_image, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # Apply CLAHE to L channel (lightness)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4,4))
+            l_clahe = clahe.apply(l)
+            
+            # Merge back
+            lab_enhanced = cv2.merge([l_clahe, a, b])
+            enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+            
+            # Apply bilateral filter to smooth skin while preserving edges
+            smooth = cv2.bilateralFilter(enhanced, 5, 50, 50)
+            
+            # Subtle sharpening for facial features
+            gaussian = cv2.GaussianBlur(smooth, (0, 0), 1.0)
+            sharpened = cv2.addWeighted(smooth, 1.5, gaussian, -0.5, 0)
+            
+            return sharpened
+            
+        except Exception:
+            return face_image
+    
+    def _ultra_aggressive_face_detection(self, image):
+        """Ultra-aggressive face detection as absolute last resort"""
+        faces = []
+        
+        try:
+            # Try on heavily enhanced versions
+            enhanced_versions = self._create_extreme_enhancements(image)
+            
+            for enhanced_img in enhanced_versions:
+                gray = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2GRAY)
+                
+                # Very aggressive parameters
+                detected = self.face_cascade.detectMultiScale(
+                    gray, 
+                    scaleFactor=1.03,  # Very small scale steps
+                    minNeighbors=1,    # Almost no neighbor requirement
+                    minSize=(10, 10),  # Tiny minimum size
+                    maxSize=(gray.shape[0], gray.shape[1]),
+                    flags=cv2.CASCADE_DO_CANNY_PRUNING
+                )
+                faces.extend(detected)
+            
+            # If still no faces, try region subdivision
+            if not faces:
+                faces.extend(self._subdivide_and_search(image))
+            
+            # Last resort: intelligent guessing based on image properties
+            if not faces:
+                faces.extend(self._intelligent_face_guessing(image))
+        
+        except Exception:
+            pass
+        
+        return faces
+    
+    def _create_extreme_enhancements(self, image):
+        """Create extremely enhanced versions for difficult detection"""
+        enhanced_versions = []
+        
+        try:
+            # Extreme contrast
+            extreme_contrast = cv2.convertScaleAbs(image, alpha=2.0, beta=0)
+            enhanced_versions.append(extreme_contrast)
+            
+            # Extreme brightness
+            extreme_bright = cv2.convertScaleAbs(image, alpha=1.0, beta=80)
+            enhanced_versions.append(extreme_bright)
+            
+            # Edge enhancement
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray, 10, 50)
+            edge_enhanced = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+            enhanced_versions.append(edge_enhanced)
+            
+            # High-pass filter
+            gaussian = cv2.GaussianBlur(image, (21, 21), 0)
+            high_pass = cv2.subtract(image, gaussian)
+            high_pass = cv2.add(high_pass, 127)  # Offset to positive values
+            enhanced_versions.append(high_pass)
+            
+        except Exception:
+            pass
+        
+        return enhanced_versions
+    
+    def _subdivide_and_search(self, image):
+        """Subdivide image into regions and search each"""
+        faces = []
+        
+        try:
+            h, w = image.shape[:2]
+            
+            # Create overlapping grid
+            step_x, step_y = w // 4, h // 4
+            window_w, window_h = w // 2, h // 2
+            
+            for y in range(0, h - window_h + 1, step_y):
+                for x in range(0, w - window_w + 1, step_x):
+                    roi = image[y:y+window_h, x:x+window_w]
+                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                    
+                    detected = self.face_cascade.detectMultiScale(
+                        gray_roi, 1.05, 1, minSize=(20, 20)
+                    )
+                    
+                    # Adjust coordinates to full image
+                    for (fx, fy, fw, fh) in detected:
+                        faces.append((x + fx, y + fy, fw, fh))
+        
+        except Exception:
+            pass
+        
+        return faces
+    
+    def _intelligent_face_guessing(self, image):
+        """Make intelligent guesses about face locations based on image analysis"""
+        faces = []
+        
+        try:
+            h, w = image.shape[:2]
+            
+            # Analyze image for skin tone regions
+            skin_regions = self._detect_skin_tone_regions(image)
+            
+            for region in skin_regions:
+                x, y, rw, rh = region
+                
+                # Check if region size is reasonable for a face
+                if (0.1 <= rw/w <= 0.8 and 
+                    0.1 <= rh/h <= 0.8 and
+                    rw > 30 and rh > 30):
+                    faces.append((x, y, rw, rh))
+            
+            # If no skin regions, guess central regions
+            if not faces:
+                # Upper center (typical portrait position)
+                face_w, face_h = min(w//3, h//3), min(w//3, h//3)
+                center_x, center_y = w//2 - face_w//2, h//4
+                faces.append((center_x, center_y, face_w, face_h))
+                
+                # Center region
+                center_x, center_y = w//2 - face_w//2, h//2 - face_h//2
+                faces.append((center_x, center_y, face_w, face_h))
+        
+        except Exception:
+            pass
+        
+        return faces
+    
+    def _detect_skin_tone_regions(self, image):
+        """Detect regions that might contain skin tones"""
+        regions = []
+        
+        try:
+            # Convert to HSV for better skin detection
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            
+            # Define skin tone ranges in HSV
+            lower_skin1 = np.array([0, 20, 70], dtype=np.uint8)
+            upper_skin1 = np.array([20, 255, 255], dtype=np.uint8)
+            
+            lower_skin2 = np.array([0, 0, 0], dtype=np.uint8)
+            upper_skin2 = np.array([25, 255, 255], dtype=np.uint8)
+            
+            # Create masks
+            mask1 = cv2.inRange(hsv, lower_skin1, upper_skin1)
+            mask2 = cv2.inRange(hsv, lower_skin2, upper_skin2)
+            mask = cv2.add(mask1, mask2)
+            
+            # Clean up mask
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            
+            # Find contours
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if area > 1000:  # Minimum area for potential face
+                    x, y, w, h = cv2.boundingRect(contour)
+                    regions.append((x, y, w, h))
+        
+        except Exception:
+            pass
+        
+        return regions
     
     def _merge_overlapping_faces(self, faces):
         """Remove duplicate and overlapping face detections"""
