@@ -45,7 +45,10 @@ class EvidenceManager:
         """Get detailed information about a case"""
         try:
             # Get case basic info
-            query = "SELECT * FROM cases WHERE id = %s"
+            if USE_SQLITE:
+                query = "SELECT * FROM cases WHERE id = ?"
+            else:
+                query = "SELECT * FROM cases WHERE id = %s"
             case_result = execute_query(query, (case_id,), fetch=True)
             
             if not case_result:
@@ -54,38 +57,68 @@ class EvidenceManager:
             case = case_result[0]
             
             # Get evidence files for this case
-            evidence_query = "SELECT * FROM evidence_files WHERE case_id = %s ORDER BY upload_date DESC"
+            if USE_SQLITE:
+                evidence_query = "SELECT * FROM evidence_files WHERE case_id = ? ORDER BY upload_date DESC"
+            else:
+                evidence_query = "SELECT * FROM evidence_files WHERE case_id = %s ORDER BY upload_date DESC"
             evidence_files = execute_query(evidence_query, (case_id,), fetch=True) or []
             
             # Get crime incidents for this case
-            incidents_query = "SELECT * FROM crime_incidents WHERE case_id = %s ORDER BY incident_date DESC"
+            if USE_SQLITE:
+                incidents_query = "SELECT * FROM crime_incidents WHERE case_id = ? ORDER BY incident_date DESC"
+            else:
+                incidents_query = "SELECT * FROM crime_incidents WHERE case_id = %s ORDER BY incident_date DESC"
             incidents = execute_query(incidents_query, (case_id,), fetch=True) or []
             
             # Get facial recognition results
-            face_query = """
-                SELECT fr.*, ef.filename 
-                FROM facial_recognition fr 
-                JOIN evidence_files ef ON fr.file_id = ef.id 
-                WHERE ef.case_id = %s
-            """
+            if USE_SQLITE:
+                face_query = """
+                    SELECT fr.*, ef.filename 
+                    FROM facial_recognition fr 
+                    JOIN evidence_files ef ON fr.file_id = ef.id 
+                    WHERE ef.case_id = ?
+                """
+            else:
+                face_query = """
+                    SELECT fr.*, ef.filename 
+                    FROM facial_recognition fr 
+                    JOIN evidence_files ef ON fr.file_id = ef.id 
+                    WHERE ef.case_id = %s
+                """
             face_results = execute_query(face_query, (case_id,), fetch=True) or []
             
             # Get forensics results
-            forensics_query = """
-                SELECT fo.*, ef.filename 
-                FROM forensics_results fo 
-                JOIN evidence_files ef ON fo.file_id = ef.id 
-                WHERE ef.case_id = %s
-            """
+            if USE_SQLITE:
+                forensics_query = """
+                    SELECT fo.*, ef.filename 
+                    FROM forensics_results fo 
+                    JOIN evidence_files ef ON fo.file_id = ef.id 
+                    WHERE ef.case_id = ?
+                """
+            else:
+                forensics_query = """
+                    SELECT fo.*, ef.filename 
+                    FROM forensics_results fo 
+                    JOIN evidence_files ef ON fo.file_id = ef.id 
+                    WHERE ef.case_id = %s
+                """
             forensics_results = execute_query(forensics_query, (case_id,), fetch=True) or []
             
             # Get AI analysis results
-            ai_query = """
-                SELECT ai.*, ef.filename 
-                FROM ai_analysis ai 
-                JOIN evidence_files ef ON ai.file_id = ef.id 
-                WHERE ef.case_id = %s
-            """
+            if USE_SQLITE:
+                ai_query = """
+                    SELECT ai.*, ef.filename 
+                    FROM ai_analysis ai 
+                    JOIN evidence_files ef ON ai.file_id = ef.id 
+                    WHERE ef.case_id = ?
+                """
+            else:
+                ai_query = """
+                    SELECT ai.*, ef.filename 
+                    FROM ai_analysis ai 
+                    JOIN evidence_files ef ON ai.file_id = ef.id 
+                    WHERE ef.case_id = %s
+                """
             ai_results = execute_query(ai_query, (case_id,), fetch=True) or []
             
             case_details = {

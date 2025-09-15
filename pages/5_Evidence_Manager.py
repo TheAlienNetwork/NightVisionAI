@@ -248,10 +248,82 @@ with tab1:
                                         index=st.session_state.evidence_manager.case_statuses.index(case_info.get('status', 'Active')))
                 
                 if st.button("Update Status") and new_status != case_info.get('status'):
-                    query = "UPDATE cases SET status = %s, updated_at = %s WHERE id = %s"
+                    from database import USE_SQLITE
+                    if USE_SQLITE:
+                        query = "UPDATE cases SET status = ?, updated_at = ? WHERE id = ?"
+                    else:
+                        query = "UPDATE cases SET status = %s, updated_at = %s WHERE id = %s"
                     execute_query(query, (new_status, datetime.now(), selected_case_id))
                     st.success(f"Status updated to {new_status}")
                     st.rerun()
+                
+                # Case deletion
+                st.markdown("---")
+                st.subheader("⚠️ Danger Zone")
+                
+                if st.button("🗑️ Delete Case", type="secondary"):
+                    st.session_state.show_delete_confirmation = True
+                
+                if st.session_state.get('show_delete_confirmation'):
+                    st.warning("⚠️ **This action cannot be undone!** All evidence, analysis results, and case data will be permanently deleted.")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button("✅ Confirm Delete", type="primary"):
+                            from database import delete_case
+                            success = delete_case(selected_case_id)
+                            if success:
+                                st.success("Case deleted successfully!")
+                                st.session_state.selected_case_id = None
+                                st.session_state.case_details = None
+                                st.session_state.show_delete_confirmation = False
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete case")
+                    
+                    with col2:
+                        if st.button("❌ Cancel"):
+                            st.session_state.show_delete_confirmation = False
+                            st.rerun()
+            
+            # AI-Powered Case Overview Dashboard
+            st.subheader("🤖 AI-Powered Case Overview")
+            
+            # Smart case insights
+            insights = []
+            evidence_files = st.session_state.case_details.get('evidence_files', [])
+            
+            # Analyze file types and suggest actions
+            video_files = [f for f in evidence_files if f.get('file_type', '').startswith('video/')]
+            image_files = [f for f in evidence_files if f.get('file_type', '').startswith('image/')]
+            
+            if video_files:
+                insights.append(f"🎥 {len(video_files)} video files detected - Consider facial recognition analysis")
+            if image_files:
+                insights.append(f"📷 {len(image_files)} image files detected - Consider perceptual hash analysis")
+            
+            # Analyze temporal patterns
+            if evidence_files:
+                recent_uploads = len([f for f in evidence_files 
+                                   if f.get('upload_date') and 
+                                   (datetime.now() - pd.to_datetime(f['upload_date'])).days <= 7])
+                if recent_uploads > 0:
+                    insights.append(f"📈 {recent_uploads} files uploaded in the last 7 days - Active investigation")
+            
+            # Analyze metadata for GPS data
+            gps_files = len([f for f in evidence_files 
+                           if f.get('metadata') and 'gps' in str(f.get('metadata', '')).lower()])
+            if gps_files > 0:
+                insights.append(f"🗺️ {gps_files} files contain location data - Consider geographic analysis")
+            
+            # Display insights
+            if insights:
+                st.markdown("**🔍 AI Insights:**")
+                for insight in insights:
+                    st.write(f"• {insight}")
+            else:
+                st.info("🤖 Upload evidence files for AI-powered insights")
             
             # Case statistics cards
             st.subheader("📊 Case Statistics")
@@ -265,6 +337,73 @@ with tab1:
             }
             
             create_summary_cards(metrics)
+            
+            # Smart file organization
+            if evidence_files:
+                st.subheader("🗂️ AI File Organization")
+                
+                # Organize files by analysis status
+                unprocessed_files = [f for f in evidence_files if not f.get('processed')]
+                recent_files = sorted([f for f in evidence_files if f.get('upload_date')], 
+                                    key=lambda x: x.get('upload_date'), reverse=True)[:5]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if unprocessed_files:
+                        st.markdown("**⏳ Pending Analysis:**")
+                        for file_info in unprocessed_files[:3]:
+                            st.write(f"• {file_info.get('filename')} ({file_info.get('file_type', 'Unknown')})")
+                        if len(unprocessed_files) > 3:
+                            st.write(f"... and {len(unprocessed_files) - 3} more files")
+                    else:
+                        st.success("✅ All files processed")
+                
+                with col2:
+                    if recent_files:
+                        st.markdown("**📅 Recently Added:**")
+                        for file_info in recent_files:
+                            upload_time = format_timestamp(file_info.get('upload_date'))
+                            st.write(f"• {file_info.get('filename')} - {upload_time}")
+            
+            # Risk assessment
+            st.subheader("⚠️ Risk Assessment")
+            
+            risk_level = "Low"
+            risk_factors = []
+            
+            # Assess based on incidents
+            incidents = st.session_state.case_details.get('crime_incidents', [])
+            high_severity_incidents = len([i for i in incidents if i.get('severity', 1) >= 3])
+            
+            if high_severity_incidents > 0:
+                risk_level = "High"
+                risk_factors.append(f"{high_severity_incidents} high-severity incidents")
+            
+            # Assess based on evidence volume
+            if len(evidence_files) > 20:
+                risk_level = "Medium" if risk_level == "Low" else risk_level
+                risk_factors.append(f"High volume of evidence ({len(evidence_files)} files)")
+            
+            # Assess based on suspects
+            from database import get_suspects
+            suspects = get_suspects(selected_case_id)
+            high_threat_suspects = len([s for s in suspects if s.get('threat_level', 1) >= 3])
+            
+            if high_threat_suspects > 0:
+                risk_level = "High"
+                risk_factors.append(f"{high_threat_suspects} high-threat suspects")
+            
+            # Display risk assessment
+            risk_colors = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}
+            st.markdown(f"**Risk Level:** {risk_colors.get(risk_level, '⚪')} {risk_level}")
+            
+            if risk_factors:
+                st.write("**Risk Factors:**")
+                for factor in risk_factors:
+                    st.write(f"• {factor}")
+            else:
+                st.write("No significant risk factors identified")
             
             # Evidence type distribution
             if stats.get('evidence_by_type'):
@@ -400,17 +539,31 @@ with tab2:
                         
                         if st.button(f"Analysis History", key=f"history_{file_info['id']}"):
                             # Show analysis history
-                            query = """
-                                SELECT 'Facial Recognition' as analysis_type, created_at 
-                                FROM facial_recognition WHERE file_id = %s
-                                UNION ALL
-                                SELECT 'Digital Forensics' as analysis_type, created_at 
-                                FROM forensics_results WHERE file_id = %s
-                                UNION ALL
-                                SELECT analysis_type, created_at 
-                                FROM ai_analysis WHERE file_id = %s
-                                ORDER BY created_at DESC
-                            """
+                            from database import USE_SQLITE
+                            if USE_SQLITE:
+                                query = """
+                                    SELECT 'Facial Recognition' as analysis_type, created_at 
+                                    FROM facial_recognition WHERE file_id = ?
+                                    UNION ALL
+                                    SELECT 'Digital Forensics' as analysis_type, created_at 
+                                    FROM forensics_results WHERE file_id = ?
+                                    UNION ALL
+                                    SELECT analysis_type, created_at 
+                                    FROM ai_analysis WHERE file_id = ?
+                                    ORDER BY created_at DESC
+                                """
+                            else:
+                                query = """
+                                    SELECT 'Facial Recognition' as analysis_type, created_at 
+                                    FROM facial_recognition WHERE file_id = %s
+                                    UNION ALL
+                                    SELECT 'Digital Forensics' as analysis_type, created_at 
+                                    FROM forensics_results WHERE file_id = %s
+                                    UNION ALL
+                                    SELECT analysis_type, created_at 
+                                    FROM ai_analysis WHERE file_id = %s
+                                    ORDER BY created_at DESC
+                                """
                             analyses = execute_query(query, (file_info['id'], file_info['id'], file_info['id']), fetch=True)
                             
                             if analyses:
@@ -419,6 +572,32 @@ with tab2:
                                     st.write(f"• {analysis['analysis_type']} - {format_timestamp(analysis['created_at'])}")
                             else:
                                 st.write("No analyses performed yet")
+                        
+                        # Add delete button
+                        if st.button(f"🗑️ Delete", key=f"delete_{file_info['id']}", type="secondary"):
+                            st.session_state[f"confirm_delete_{file_info['id']}"] = True
+                            st.rerun()
+                
+                # Show delete confirmation if requested
+                if st.session_state.get(f"confirm_delete_{file_info['id']}"):
+                    st.warning(f"⚠️ Delete {file_info['filename']}? This will also delete all analysis results.")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button(f"✅ Confirm", key=f"confirm_{file_info['id']}"):
+                            from database import delete_evidence_file
+                            success = delete_evidence_file(file_info['id'])
+                            if success:
+                                st.success("File deleted successfully!")
+                                st.session_state[f"confirm_delete_{file_info['id']}"] = False
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete file")
+                    
+                    with col2:
+                        if st.button(f"❌ Cancel", key=f"cancel_{file_info['id']}"):
+                            st.session_state[f"confirm_delete_{file_info['id']}"] = False
+                            st.rerun()
                 
                 # Show detailed file view if requested
                 if st.session_state.get(f"show_file_details_{file_info['id']}"):
