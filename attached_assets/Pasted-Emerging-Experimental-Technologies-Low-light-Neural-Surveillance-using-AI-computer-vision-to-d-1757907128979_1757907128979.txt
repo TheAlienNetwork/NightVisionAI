@@ -1,0 +1,50 @@
+Emerging / Experimental Technologies
+
+Low-light Neural Surveillance: using AI + computer vision to detect assaults/shootings in dark video, to provide alerts in real time. 
+arXiv
+
+Nano drone-based indoor crime scene analysis: drones mapping crime scenes, taking images, even analyzing blood spatter or evidence that’s hard to reach. 
+arXiv
+
+Crime pattern / hotspot analysis tools (e.g. CrimAnalyzer) for visualizing patterns of incidents over time & location to predict possible risk or focus investigative angles. 
+arXiv
+
+My Suggestions: What Software You Should Use / Try
+
+Since you're exploring detective work as a civilian or private investigator, here are tools & approaches you could adopt that balance power, cost, and legality:
+
+Digital Forensics Toolkit
+
+Tools like Autopsy (open source), The Sleuth Kit, NetAnalysis (if accessible) to examine browser/data traces.
+
+Use for preserving digital evidence: browser history, social media posts, metadata of images/videos.
+
+Video / Image Analysis Tools
+
+Use software like OpenCV + FFmpeg for extracting frames, detecting flashes or anomalies.
+
+For confirming visual matches, use perceptual hashing (imagehash, etc.).
+
+Software like InVID (for video verification) can help check provenance of videos, see if they're edited or manipulated.
+
+Case / Evidence Management Systems
+
+Something like an evidence-management dashboard — think timelines, relational graphs, map overlays. Could be custom (using e.g. Neo4j + GIS tools) or commercial.
+
+Data Aggregation / Public Records Search Tools
+
+Subscription services or APIs to access court documents, news archives, public property / license plate records, social media public posts.
+
+Services like Tracers (for public records & skip tracing) or other OSINT tools.
+
+Predictive and Analytic Visualization Tools
+
+Use mapping tools (GIS) + crime pattern analysis tools to see when/where events cluster.
+
+Visual dashboards combining dispatch logs, video camera locations, timelines.
+
+Legal / Reasoning Tools
+
+Tools like LAPIS for reference of legal constraints and to help with what is allowed in an investigation (searches, privacy limits).
+
+Document / affidavit templates with version tracking.
