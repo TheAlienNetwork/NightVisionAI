@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import json
+import os  # Import the os module
 from database import execute_query, get_cases, create_case, USE_SQLITE, get_connection
 
 class EvidenceManager:

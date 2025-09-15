@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 from modules.digital_forensics import DigitalForensicsToolkit
 from database import get_evidence_files, execute_query
 from utils.data_utils import format_file_size, format_timestamp, create_summary_cards

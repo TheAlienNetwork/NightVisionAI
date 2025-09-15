@@ -336,7 +336,11 @@ def execute_query(query: str, params: tuple = None, fetch: bool = False) -> Opti
     try:
         if USE_SQLITE:
             cur = conn.cursor()
-            cur.execute(query, params or ())
+            # Handle None params for SQLite
+            if params is None:
+                cur.execute(query)
+            else:
+                cur.execute(query, params)
 
             if fetch:
                 result = [dict(row) for row in cur.fetchall()]
@@ -360,7 +364,8 @@ def execute_query(query: str, params: tuple = None, fetch: bool = False) -> Opti
 
     except Exception as e:
         conn.rollback()
-        cur.close()
+        if 'cur' in locals():
+            cur.close()
         conn.close()
         st.error(f"Database query failed: {str(e)}")
         return None
