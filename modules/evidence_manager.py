@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import json
-from database import execute_query, get_cases, create_case
+from database import execute_query, get_cases, create_case, USE_SQLITE
 
 class EvidenceManager:
     def __init__(self):
@@ -136,12 +136,20 @@ class EvidenceManager:
     def add_incident_to_case(self, case_id: int, incident_data: Dict) -> bool:
         """Add a crime incident to a case"""
         try:
-            query = """
-                INSERT INTO crime_incidents 
-                (case_id, incident_type, location_lat, location_lng, address, 
-                 incident_date, description, severity)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """
+            if USE_SQLITE:
+                query = """
+                    INSERT INTO crime_incidents 
+                    (case_id, incident_type, location_lat, location_lng, address, 
+                     incident_date, description, severity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """
+            else:
+                query = """
+                    INSERT INTO crime_incidents 
+                    (case_id, incident_type, location_lat, location_lng, address, 
+                     incident_date, description, severity)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
             
             params = (
                 case_id,

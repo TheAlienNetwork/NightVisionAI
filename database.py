@@ -1,10 +1,9 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import streamlit as st
 from typing import Dict, List, Any, Optional
 import json
 from datetime import datetime
+import sqlite3
 
 # Database configuration from environment variables
 DB_CONFIG = {
@@ -15,11 +14,22 @@ DB_CONFIG = {
     'port': os.getenv('PGPORT', '5432')
 }
 
+# For development, use SQLite if PostgreSQL is not available
+USE_SQLITE = os.getenv('USE_SQLITE', 'true').lower() == 'true'
+
 def get_connection():
     """Get database connection"""
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
+        if USE_SQLITE:
+            # Use SQLite for development
+            conn = sqlite3.connect('investigative_platform.db', check_same_thread=False)
+            conn.row_factory = sqlite3.Row  # This allows dict-like access to rows
+            return conn
+        else:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            conn = psycopg2.connect(**DB_CONFIG)
+            return conn
     except Exception as e:
         st.error(f"Database connection failed: {str(e)}")
         return None
@@ -34,119 +44,234 @@ def init_database():
         cur = conn.cursor()
         
         # Cases table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS cases (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                description TEXT,
-                status VARCHAR(50) DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        if USE_SQLITE:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS cases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    status TEXT DEFAULT 'Active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS cases (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    status VARCHAR(50) DEFAULT 'Active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         
         # Evidence files table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS evidence_files (
-                id SERIAL PRIMARY KEY,
-                case_id INTEGER REFERENCES cases(id),
-                filename VARCHAR(255) NOT NULL,
-                file_type VARCHAR(100),
-                file_size BIGINT,
-                upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                file_path TEXT,
-                metadata JSONB,
-                hash_value VARCHAR(64),
-                processed BOOLEAN DEFAULT FALSE
-            )
-        """)
+        if USE_SQLITE:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS evidence_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    case_id INTEGER REFERENCES cases(id),
+                    filename TEXT NOT NULL,
+                    file_type TEXT,
+                    file_size INTEGER,
+                    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    file_path TEXT,
+                    metadata TEXT,
+                    hash_value TEXT,
+                    processed BOOLEAN DEFAULT 0
+                )
+            """)
+        else:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS evidence_files (
+                    id SERIAL PRIMARY KEY,
+                    case_id INTEGER REFERENCES cases(id),
+                    filename VARCHAR(255) NOT NULL,
+                    file_type VARCHAR(100),
+                    file_size BIGINT,
+                    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    file_path TEXT,
+                    metadata JSONB,
+                    hash_value VARCHAR(64),
+                    processed BOOLEAN DEFAULT FALSE
+                )
+            """)
         
         # Facial recognition results table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS facial_recognition (
-                id SERIAL PRIMARY KEY,
-                file_id INTEGER REFERENCES evidence_files(id),
-                face_encodings JSONB,
-                bounding_boxes JSONB,
-                confidence_scores JSONB,
-                identified_persons JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Crime incidents table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS crime_incidents (
-                id SERIAL PRIMARY KEY,
-                case_id INTEGER REFERENCES cases(id),
-                incident_type VARCHAR(100),
-                location_lat DECIMAL(10, 8),
-                location_lng DECIMAL(11, 8),
-                address TEXT,
-                incident_date TIMESTAMP,
-                description TEXT,
-                severity INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Digital forensics results table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS forensics_results (
-                id SERIAL PRIMARY KEY,
-                file_id INTEGER REFERENCES evidence_files(id),
-                metadata_extracted JSONB,
-                file_analysis JSONB,
-                hash_matches JSONB,
-                timeline_data JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # AI analysis results table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS ai_analysis (
-                id SERIAL PRIMARY KEY,
-                file_id INTEGER REFERENCES evidence_files(id),
-                analysis_type VARCHAR(100),
-                results JSONB,
-                confidence_score DECIMAL(3, 2),
-                anomalies_detected JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Suspects table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS suspects (
-                id SERIAL PRIMARY KEY,
-                case_id INTEGER REFERENCES cases(id),
-                name VARCHAR(255) NOT NULL,
-                description TEXT,
-                threat_level INTEGER DEFAULT 1,
-                photo_file_id INTEGER REFERENCES evidence_files(id),
-                first_seen TIMESTAMP,
-                last_seen TIMESTAMP,
-                appearance_count INTEGER DEFAULT 1,
-                confidence_score DECIMAL(3, 2),
-                status VARCHAR(50) DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Case activity log table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS case_activity_log (
-                id SERIAL PRIMARY KEY,
-                case_id INTEGER REFERENCES cases(id),
-                activity_type VARCHAR(100),
-                description TEXT,
-                user_name VARCHAR(255),
-                metadata JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        if USE_SQLITE:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS facial_recognition (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id INTEGER REFERENCES evidence_files(id),
+                    face_encodings TEXT,
+                    bounding_boxes TEXT,
+                    confidence_scores TEXT,
+                    identified_persons TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Crime incidents table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS crime_incidents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    case_id INTEGER REFERENCES cases(id),
+                    incident_type TEXT,
+                    location_lat REAL,
+                    location_lng REAL,
+                    address TEXT,
+                    incident_date TIMESTAMP,
+                    description TEXT,
+                    severity INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Digital forensics results table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS forensics_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id INTEGER REFERENCES evidence_files(id),
+                    metadata_extracted TEXT,
+                    file_analysis TEXT,
+                    hash_matches TEXT,
+                    timeline_data TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # AI analysis results table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ai_analysis (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id INTEGER REFERENCES evidence_files(id),
+                    analysis_type TEXT,
+                    results TEXT,
+                    confidence_score REAL,
+                    anomalies_detected TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Suspects table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS suspects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    case_id INTEGER REFERENCES cases(id),
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    threat_level INTEGER DEFAULT 1,
+                    photo_file_id INTEGER REFERENCES evidence_files(id),
+                    first_seen TIMESTAMP,
+                    last_seen TIMESTAMP,
+                    appearance_count INTEGER DEFAULT 1,
+                    confidence_score REAL,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Case activity log table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS case_activity_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    case_id INTEGER REFERENCES cases(id),
+                    activity_type TEXT,
+                    description TEXT,
+                    user_name TEXT,
+                    metadata TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS facial_recognition (
+                    id SERIAL PRIMARY KEY,
+                    file_id INTEGER REFERENCES evidence_files(id),
+                    face_encodings JSONB,
+                    bounding_boxes JSONB,
+                    confidence_scores JSONB,
+                    identified_persons JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Crime incidents table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS crime_incidents (
+                    id SERIAL PRIMARY KEY,
+                    case_id INTEGER REFERENCES cases(id),
+                    incident_type VARCHAR(100),
+                    location_lat DECIMAL(10, 8),
+                    location_lng DECIMAL(11, 8),
+                    address TEXT,
+                    incident_date TIMESTAMP,
+                    description TEXT,
+                    severity INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Digital forensics results table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS forensics_results (
+                    id SERIAL PRIMARY KEY,
+                    file_id INTEGER REFERENCES evidence_files(id),
+                    metadata_extracted JSONB,
+                    file_analysis JSONB,
+                    hash_matches JSONB,
+                    timeline_data JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # AI analysis results table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ai_analysis (
+                    id SERIAL PRIMARY KEY,
+                    file_id INTEGER REFERENCES evidence_files(id),
+                    analysis_type VARCHAR(100),
+                    results JSONB,
+                    confidence_score DECIMAL(3, 2),
+                    anomalies_detected JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Suspects table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS suspects (
+                    id SERIAL PRIMARY KEY,
+                    case_id INTEGER REFERENCES cases(id),
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    threat_level INTEGER DEFAULT 1,
+                    photo_file_id INTEGER REFERENCES evidence_files(id),
+                    first_seen TIMESTAMP,
+                    last_seen TIMESTAMP,
+                    appearance_count INTEGER DEFAULT 1,
+                    confidence_score DECIMAL(3, 2),
+                    status VARCHAR(50) DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Case activity log table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS case_activity_log (
+                    id SERIAL PRIMARY KEY,
+                    case_id INTEGER REFERENCES cases(id),
+                    activity_type VARCHAR(100),
+                    description TEXT,
+                    user_name VARCHAR(255),
+                    metadata JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         
         conn.commit()
         cur.close()
@@ -165,14 +290,25 @@ def execute_query(query: str, params: tuple = None, fetch: bool = False) -> Opti
         return None
     
     try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(query, params)
-        
-        if fetch:
-            result = [dict(row) for row in cur.fetchall()]
+        if USE_SQLITE:
+            cur = conn.cursor()
+            cur.execute(query, params or ())
+            
+            if fetch:
+                result = [dict(row) for row in cur.fetchall()]
+            else:
+                conn.commit()
+                result = cur.rowcount
         else:
-            conn.commit()
-            result = cur.rowcount
+            from psycopg2.extras import RealDictCursor
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(query, params)
+            
+            if fetch:
+                result = [dict(row) for row in cur.fetchall()]
+            else:
+                conn.commit()
+                result = cur.rowcount
         
         cur.close()
         conn.close()
@@ -187,9 +323,29 @@ def execute_query(query: str, params: tuple = None, fetch: bool = False) -> Opti
 
 def create_case(name: str, description: str = "") -> Optional[int]:
     """Create a new case"""
-    query = "INSERT INTO cases (name, description) VALUES (%s, %s) RETURNING id"
-    result = execute_query(query, (name, description), fetch=True)
-    return result[0]['id'] if result else None
+    if USE_SQLITE:
+        query = "INSERT INTO cases (name, description) VALUES (?, ?)"
+        conn = get_connection()
+        if not conn:
+            return None
+        try:
+            cur = conn.cursor()
+            cur.execute(query, (name, description))
+            case_id = cur.lastrowid
+            conn.commit()
+            cur.close()
+            conn.close()
+            return case_id
+        except Exception as e:
+            st.error(f"Error creating case: {str(e)}")
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return None
+    else:
+        query = "INSERT INTO cases (name, description) VALUES (%s, %s) RETURNING id"
+        result = execute_query(query, (name, description), fetch=True)
+        return result[0]['id'] if result else None
 
 def get_cases() -> List[Dict]:
     """Get all cases"""

@@ -1,4 +1,3 @@
-
 import streamlit as st
 import os
 from database import init_database
@@ -18,7 +17,7 @@ st.markdown("""
     .stApp {
         background: linear-gradient(135deg, #0e1117 0%, #1a1d29 100%);
     }
-    
+
     /* Headers */
     h1 {
         color: #00d4aa !important;
@@ -26,19 +25,19 @@ st.markdown("""
         font-weight: 700;
         text-shadow: 0 2px 4px rgba(0, 212, 170, 0.3);
     }
-    
+
     h2, h3 {
         color: #fafafa !important;
         font-family: 'Segoe UI', Arial, sans-serif;
         font-weight: 600;
     }
-    
+
     /* Sidebar styling */
     .css-1d391kg {
         background: linear-gradient(180deg, #1a1d29 0%, #262730 100%);
         border-right: 2px solid #00d4aa;
     }
-    
+
     /* Metric cards */
     .metric-container {
         background: rgba(0, 212, 170, 0.1);
@@ -48,7 +47,7 @@ st.markdown("""
         margin: 0.5rem 0;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
-    
+
     /* Buttons */
     .stButton > button {
         background: linear-gradient(45deg, #00d4aa, #00b894);
@@ -59,38 +58,38 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0, 212, 170, 0.3);
         transition: all 0.3s ease;
     }
-    
+
     .stButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 12px rgba(0, 212, 170, 0.4);
     }
-    
+
     /* Info boxes */
     .stAlert {
         background: rgba(0, 212, 170, 0.1);
         border: 1px solid #00d4aa;
         border-radius: 8px;
     }
-    
+
     /* Cards and expanders */
     .streamlit-expanderHeader {
         background: rgba(38, 39, 48, 0.8);
         border: 1px solid #00d4aa;
         border-radius: 8px;
     }
-    
+
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
-    
+
     .stTabs [data-baseweb="tab"] {
         background: rgba(38, 39, 48, 0.6);
         border: 1px solid #444;
         border-radius: 8px 8px 0 0;
         padding: 0.75rem 1.5rem;
     }
-    
+
     .stTabs [aria-selected="true"] {
         background: linear-gradient(45deg, #00d4aa, #00b894);
         border-color: #00d4aa;
@@ -100,7 +99,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def main():
-    # Initialize database on first run
+    # Initialize database on app startup
     if 'db_initialized' not in st.session_state:
         try:
             init_database()
@@ -111,7 +110,7 @@ def main():
 
     # Main page content
     st.title("🔍 Advanced Investigative Intelligence Platform")
-    
+
     # Hero section with gradient background
     st.markdown("""
     <div style="background: linear-gradient(90deg, rgba(0,212,170,0.1) 0%, rgba(38,39,48,0.1) 100%); 
@@ -122,10 +121,10 @@ def main():
         </p>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # Platform overview with modern cards
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown("""
         <div class="metric-container">
@@ -138,7 +137,7 @@ def main():
             </ul>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown("""
         <div class="metric-container">
@@ -151,7 +150,7 @@ def main():
             </ul>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col3:
         st.markdown("""
         <div class="metric-container">
@@ -164,10 +163,10 @@ def main():
             </ul>
         </div>
         """, unsafe_allow_html=True)
-    
+
     # Navigation instructions
     st.subheader("🚀 Investigation Modules")
-    
+
     st.markdown("""
     <div style="background: rgba(38, 39, 48, 0.6); padding: 1.5rem; border-radius: 10px; border: 1px solid #444;">
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
@@ -190,12 +189,12 @@ def main():
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # System status with modern styling
     st.subheader("📊 System Status")
-    
+
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
         db_status = "🟢 Connected" if st.session_state.get('db_initialized') else "🔴 Disconnected"
         st.markdown(f"""
@@ -204,7 +203,7 @@ def main():
             <p style="color: #fafafa; margin: 0.5rem 0 0 0;">{db_status}</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         openai_key = os.getenv("OPENAI_API_KEY")
         ai_status = "🟢 Available" if openai_key else "🟡 Not Configured"
@@ -214,7 +213,7 @@ def main():
             <p style="color: #fafafa; margin: 0.5rem 0 0 0;">{ai_status}</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col3:
         files_count = len(st.session_state.get('uploaded_files', []))
         st.markdown(f"""
@@ -223,7 +222,7 @@ def main():
             <p style="color: #fafafa; margin: 0.5rem 0 0 0;">{files_count} processed</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col4:
         cases_count = len(st.session_state.get('active_cases', []))
         st.markdown(f"""
