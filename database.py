@@ -449,10 +449,10 @@ def get_evidence_files(case_id: int = None) -> List[Dict]:
     else:
         if USE_SQLITE:
             query = "SELECT * FROM evidence_files ORDER BY upload_date DESC"
-            params = None
+            params = ()
         else:
             query = "SELECT * FROM evidence_files ORDER BY upload_date DESC"
-            params = None
+            params = ()
 
     result = execute_query(query, params, fetch=True)
     return result or []
@@ -526,7 +526,7 @@ def get_suspects(case_id: int = None) -> List[Dict]:
                 LEFT JOIN cases c ON s.case_id = c.id 
                 ORDER BY s.threat_level DESC, s.confidence_score DESC, s.last_seen DESC
             """
-            params = None
+            params = ()
         else:
             query = """
                 SELECT s.*, ef.filename as photo_filename, c.name as case_name
@@ -535,7 +535,7 @@ def get_suspects(case_id: int = None) -> List[Dict]:
                 LEFT JOIN cases c ON s.case_id = c.id 
                 ORDER BY s.threat_level DESC, s.confidence_score DESC, s.last_seen DESC
             """
-            params = None
+            params = ()
 
     result = execute_query(query, params, fetch=True)
     return result or []
@@ -573,8 +573,7 @@ def get_case_activity_log(case_id: int, limit: int = 50) -> List[Dict]:
             ORDER BY created_at DESC 
             LIMIT ?
         """
-        result = execute_query(query, (case_id, limit), fetch=True)
-        return result or []
+        params = (case_id, limit)
     else:
         query = """
             SELECT * FROM case_activity_log 
@@ -582,8 +581,10 @@ def get_case_activity_log(case_id: int, limit: int = 50) -> List[Dict]:
             ORDER BY created_at DESC 
             LIMIT %s
         """
-        result = execute_query(query, (case_id, limit), fetch=True)
-        return result or []
+        params = (case_id, limit)
+    
+    result = execute_query(query, params, fetch=True)
+    return result or []
 
 def delete_case(case_id: int) -> bool:
     """Delete a case and all its associated data"""
@@ -642,6 +643,45 @@ def delete_case(case_id: int) -> bool:
             st.error(f"Error deleting case: {str(e)}")
             return False
 
+def delete_evidence_file(file_id: int) -> bool:
+    """Delete evidence file and all associated analysis results"""
+    if USE_SQLITE:
+        conn = get_connection()
+        if not conn:
+            return False
+        try:
+            cur = conn.cursor()
+            # Delete associated AI analysis results
+            cur.execute("DELETE FROM ai_analysis WHERE file_id = ?", (file_id,))
+            # Delete associated facial recognition results
+            cur.execute("DELETE FROM facial_recognition WHERE file_id = ?", (file_id,))
+            # Delete associated forensics results
+            cur.execute("DELETE FROM forensics_results WHERE file_id = ?", (file_id,))
+            # Delete the evidence file itself
+            cur.execute("DELETE FROM evidence_files WHERE id = ?", (file_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            st.error(f"Error deleting evidence file: {str(e)}")
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return False
+    else:
+        try:
+            # Delete dependent records first
+            execute_query("DELETE FROM ai_analysis WHERE file_id = %s", (file_id,))
+            execute_query("DELETE FROM facial_recognition WHERE file_id = %s", (file_id,))
+            execute_query("DELETE FROM forensics_results WHERE file_id = %s", (file_id,))
+            # Delete the evidence file
+            result = execute_query("DELETE FROM evidence_files WHERE id = %s", (file_id,))
+            return result is not None
+        except Exception as e:
+            st.error(f"Error deleting evidence file: {str(e)}")
+            return False
+
 def get_file_hash(file_path: str) -> str:
     """Calculate SHA256 hash of a file"""
     hasher = hashlib.sha256()
@@ -687,13 +727,15 @@ def search_database(search_term: str, search_type: str = 'all') -> Dict[str, Lis
                 FROM cases 
                 WHERE name LIKE ? OR description LIKE ?
             """
+            params = (f'%{search_term}%', f'%{search_term}%')
         else:
             case_query = """
                 SELECT id, name, description, status, created_at 
                 FROM cases 
                 WHERE name ILIKE %s OR description ILIKE %s
             """
-        case_results = execute_query(case_query, (f'%{search_term}%', f'%{search_term}%'), fetch=True) or []
+            params = (f'%{search_term}%', f'%{search_term}%')
+        case_results = execute_query(case_query, params, fetch=True) or []
         results['cases'] = case_results
 
     if search_type in ['all', 'evidence']:
@@ -705,6 +747,7 @@ def search_database(search_term: str, search_type: str = 'all') -> Dict[str, Lis
                 JOIN cases c ON ef.case_id = c.id
                 WHERE ef.filename LIKE ?
             """
+            params = (f'%{search_term}%',)
         else:
             evidence_query = """
                 SELECT ef.*, c.name as case_name 
@@ -712,7 +755,8 @@ def search_database(search_term: str, search_type: str = 'all') -> Dict[str, Lis
                 JOIN cases c ON ef.case_id = c.id
                 WHERE ef.filename ILIKE %s
             """
-        evidence_results = execute_query(evidence_query, (f'%{search_term}%',), fetch=True) or []
+            params = (f'%{search_term}%',)
+        evidence_results = execute_query(evidence_query, params, fetch=True) or []
         results['evidence'] = evidence_results
 
     if search_type in ['all', 'incidents']:
@@ -724,6 +768,7 @@ def search_database(search_term: str, search_type: str = 'all') -> Dict[str, Lis
                 JOIN cases c ON ci.case_id = c.id
                 WHERE ci.description LIKE ? OR ci.incident_type LIKE ? OR ci.address LIKE ?
             """
+            params = (f'%{search_term}%', f'%{search_term}%', f'%{search_term}%')
         else:
             incident_query = """
                 SELECT ci.*, c.name as case_name 
@@ -731,7 +776,8 @@ def search_database(search_term: str, search_type: str = 'all') -> Dict[str, Lis
                 JOIN cases c ON ci.case_id = c.id
                 WHERE ci.description ILIKE %s OR ci.incident_type ILIKE %s OR ci.address ILIKE %s
             """
-        incident_results = execute_query(incident_query, (f'%{search_term}%', f'%{search_term}%', f'%{search_term}%'), fetch=True) or []
+            params = (f'%{search_term}%', f'%{search_term}%', f'%{search_term}%')
+        incident_results = execute_query(incident_query, params, fetch=True) or []
         results['incidents'] = incident_results
 
     if search_type in ['all', 'suspects']:
@@ -743,6 +789,7 @@ def search_database(search_term: str, search_type: str = 'all') -> Dict[str, Lis
                 JOIN cases c ON s.case_id = c.id
                 WHERE s.name LIKE ? OR s.description LIKE ?
             """
+            params = (f'%{search_term}%', f'%{search_term}%')
         else:
             suspect_query = """
                 SELECT s.*, c.name as case_name 
@@ -750,7 +797,8 @@ def search_database(search_term: str, search_type: str = 'all') -> Dict[str, Lis
                 JOIN cases c ON s.case_id = c.id
                 WHERE s.name ILIKE %s OR s.description ILIKE %s
             """
-        suspect_results = execute_query(suspect_query, (f'%{search_term}%', f'%{search_term}%'), fetch=True) or []
+            params = (f'%{search_term}%', f'%{search_term}%')
+        suspect_results = execute_query(suspect_query, params, fetch=True) or []
         results['suspects'] = suspect_results
 
     return results
