@@ -1,10 +1,15 @@
+
 [server]
 headless = true
 address = "0.0.0.0"
 port = 5000
 
 [theme]
-primaryColor = "#1f77b4"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
+primaryColor = "#00d4aa"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#262730"
+textColor = "#fafafa"
+base = "dark"
+
+[client]
+showErrorDetails = false

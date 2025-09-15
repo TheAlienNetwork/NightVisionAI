@@ -48,15 +48,24 @@ with st.sidebar:
     
     # Select existing case
     if cases:
-        case_options = {f"{case['name']} (ID: {case['id']})": case['id'] for case in cases}
-        selected_case_display = st.selectbox("Select Case", ["None"] + list(case_options.keys()))
+        case_options = {f"🔍 {case['name']} ({case['status']})": case['id'] for case in cases}
+        case_options = {"🚫 No case selected": None, **case_options}
         
-        if selected_case_display != "None":
-            selected_case_id = case_options[selected_case_display]
-        else:
-            selected_case_id = None
+        selected_case_display = st.selectbox("🎯 **Select Investigation Case**", list(case_options.keys()))
+        selected_case_id = case_options[selected_case_display]
+        
+        if selected_case_id:
+            # Show case info
+            selected_case = next(c for c in cases if c['id'] == selected_case_id)
+            st.markdown(f"""
+            <div style="background: rgba(0, 212, 170, 0.1); border: 1px solid #00d4aa; 
+                        border-radius: 8px; padding: 1rem; margin: 0.5rem 0;">
+                <h4 style="color: #00d4aa; margin: 0;">📁 {selected_case['name']}</h4>
+                <p style="color: #b0b3b8; margin: 0.5rem 0 0 0;">Status: {selected_case['status']}</p>
+            </div>
+            """, unsafe_allow_html=True)
     else:
-        st.info("No cases available. Please create a case first.")
+        st.warning("⚠️ No cases available. Create a case in Evidence Manager first.")
         selected_case_id = None
     
     # Upload settings
@@ -116,6 +125,19 @@ with col1:
                             processed_file['id'] = file_id
                             processed_file['file_path'] = file_path
                             saved_files.append(processed_file)
+                            
+                            # Log activity
+                            from database import log_case_activity
+                            log_case_activity(
+                                selected_case_id, 
+                                "evidence_uploaded", 
+                                f"Evidence file uploaded: {processed_file['filename']} ({processed_file['mime_type']})",
+                                metadata={
+                                    "file_size": processed_file['size'],
+                                    "file_type": processed_file['mime_type'],
+                                    "hash": processed_file['hash']
+                                }
+                            )
                     
                     # Update session state
                     st.session_state.uploaded_files.extend(saved_files)

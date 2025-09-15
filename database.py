@@ -116,6 +116,38 @@ def init_database():
             )
         """)
         
+        # Suspects table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS suspects (
+                id SERIAL PRIMARY KEY,
+                case_id INTEGER REFERENCES cases(id),
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                threat_level INTEGER DEFAULT 1,
+                photo_file_id INTEGER REFERENCES evidence_files(id),
+                first_seen TIMESTAMP,
+                last_seen TIMESTAMP,
+                appearance_count INTEGER DEFAULT 1,
+                confidence_score DECIMAL(3, 2),
+                status VARCHAR(50) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Case activity log table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS case_activity_log (
+                id SERIAL PRIMARY KEY,
+                case_id INTEGER REFERENCES cases(id),
+                activity_type VARCHAR(100),
+                description TEXT,
+                user_name VARCHAR(255),
+                metadata JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         conn.commit()
         cur.close()
         conn.close()
@@ -189,4 +221,65 @@ def get_evidence_files(case_id: int = None) -> List[Dict]:
         params = None
     
     result = execute_query(query, params, fetch=True)
+    return result or []
+
+def add_suspect(case_id: int, name: str, description: str = "", threat_level: int = 1, 
+                photo_file_id: int = None, confidence_score: float = 0.0) -> Optional[int]:
+    """Add suspect to database"""
+    query = """
+        INSERT INTO suspects 
+        (case_id, name, description, threat_level, photo_file_id, confidence_score, first_seen, last_seen)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+    """
+    now = datetime.now()
+    params = (case_id, name, description, threat_level, photo_file_id, confidence_score, now, now)
+    result = execute_query(query, params, fetch=True)
+    return result[0]['id'] if result else None
+
+def get_suspects(case_id: int = None) -> List[Dict]:
+    """Get suspects, optionally filtered by case"""
+    if case_id:
+        query = """
+            SELECT s.*, ef.filename as photo_filename 
+            FROM suspects s 
+            LEFT JOIN evidence_files ef ON s.photo_file_id = ef.id 
+            WHERE s.case_id = %s 
+            ORDER BY s.threat_level DESC, s.confidence_score DESC, s.last_seen DESC
+        """
+        params = (case_id,)
+    else:
+        query = """
+            SELECT s.*, ef.filename as photo_filename, c.name as case_name
+            FROM suspects s 
+            LEFT JOIN evidence_files ef ON s.photo_file_id = ef.id 
+            LEFT JOIN cases c ON s.case_id = c.id 
+            ORDER BY s.threat_level DESC, s.confidence_score DESC, s.last_seen DESC
+        """
+        params = None
+    
+    result = execute_query(query, params, fetch=True)
+    return result or []
+
+def log_case_activity(case_id: int, activity_type: str, description: str, 
+                     user_name: str = "System", metadata: Dict = None) -> bool:
+    """Log activity for a case"""
+    query = """
+        INSERT INTO case_activity_log 
+        (case_id, activity_type, description, user_name, metadata)
+        VALUES (%s, %s, %s, %s, %s)
+    """
+    params = (case_id, activity_type, description, user_name, 
+              json.dumps(metadata) if metadata else None)
+    result = execute_query(query, params)
+    return result is not None
+
+def get_case_activity_log(case_id: int, limit: int = 50) -> List[Dict]:
+    """Get activity log for a case"""
+    query = """
+        SELECT * FROM case_activity_log 
+        WHERE case_id = %s 
+        ORDER BY created_at DESC 
+        LIMIT %s
+    """
+    result = execute_query(query, (case_id, limit), fetch=True)
     return result or []

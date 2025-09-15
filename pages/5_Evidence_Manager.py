@@ -33,43 +33,99 @@ if 'case_details' not in st.session_state:
 
 # Sidebar for case selection and quick actions
 with st.sidebar:
-    st.header("Case Management")
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #00d4aa 0%, #00b894 100%); 
+                padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
+        <h2 style="color: white; margin: 0; text-align: center;">🕵️ Case Operations</h2>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Case selection
     cases = get_cases()
     
     if cases:
-        case_options = {f"{case['name']} ({case['status']})": case['id'] for case in cases}
-        case_options = {"Select a case...": None, **case_options}
+        case_options = {f"🔍 {case['name']} ({case['status']})": case['id'] for case in cases}
+        case_options = {"➕ Select a case...": None, **case_options}
         
-        selected_case_display = st.selectbox("Active Case", list(case_options.keys()))
+        selected_case_display = st.selectbox("🎯 **Active Investigation**", list(case_options.keys()))
         selected_case_id = case_options[selected_case_display]
         
         if selected_case_id != st.session_state.selected_case_id:
             st.session_state.selected_case_id = selected_case_id
             st.session_state.case_details = None
             if selected_case_id:
+                # Log case selection activity
+                from database import log_case_activity
+                log_case_activity(selected_case_id, "case_opened", f"Case opened for investigation")
                 st.rerun()
     else:
-        st.info("No cases available")
+        st.info("🚀 No cases available - Create your first case below")
         selected_case_id = None
     
     # Quick case creation
-    st.subheader("Quick Actions")
+    st.markdown("""
+    <div style="background: rgba(0, 212, 170, 0.1); border: 1px solid #00d4aa; 
+                border-radius: 10px; padding: 1rem; margin: 1rem 0;">
+        <h3 style="color: #00d4aa; margin-top: 0;">⚡ Quick Actions</h3>
+    </div>
+    """, unsafe_allow_html=True)
     
-    with st.expander("➕ Create New Case"):
-        new_case_name = st.text_input("Case Name")
-        new_case_description = st.text_area("Description", height=80)
-        new_case_priority = st.selectbox("Priority", [1, 2, 3, 4], index=1, 
-                                        format_func=lambda x: st.session_state.evidence_manager.priority_levels[x])
+    with st.expander("➕ **Create New Investigation**", expanded=not cases):
+        new_case_name = st.text_input("🏷️ Case Name", placeholder="Enter investigation case name...")
+        new_case_description = st.text_area("📝 Description", height=80, 
+                                           placeholder="Brief description of the investigation...")
         
-        if st.button("Create Case") and new_case_name:
+        col1, col2 = st.columns(2)
+        with col1:
+            new_case_priority = st.selectbox("🔥 Priority Level", [1, 2, 3, 4], index=1, 
+                                            format_func=lambda x: st.session_state.evidence_manager.priority_levels[x])
+        with col2:
+            case_type = st.selectbox("📁 Case Type", 
+                                   ["Criminal Investigation", "Missing Person", "Fraud Investigation", 
+                                    "Cybercrime", "Drug Investigation", "Other"])
+        
+        if st.button("🚀 **Create Investigation Case**", type="primary") and new_case_name:
+            from database import log_case_activity
             case_id = st.session_state.evidence_manager.create_new_case(
                 new_case_name, new_case_description, new_case_priority
             )
             if case_id:
-                st.success(f"Case '{new_case_name}' created!")
+                # Log case creation
+                log_case_activity(case_id, "case_created", 
+                                f"New {case_type} case created: {new_case_name}", 
+                                metadata={"priority": new_case_priority, "case_type": case_type})
+                st.success(f"✅ Investigation '{new_case_name}' created successfully!")
+                st.balloons()
                 st.rerun()
+    
+    # Current suspects list
+    if selected_case_id:
+        st.markdown("---")
+        st.markdown("""
+        <div style="background: rgba(220, 20, 60, 0.1); border: 1px solid #dc143c; 
+                    border-radius: 10px; padding: 1rem;">
+            <h3 style="color: #dc143c; margin-top: 0;">🎯 Current Suspects</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        from database import get_suspects
+        suspects = get_suspects(selected_case_id)
+        
+        if suspects:
+            for suspect in suspects[:5]:  # Show top 5 suspects
+                threat_colors = {1: "🟢", 2: "🟡", 3: "🟠", 4: "🔴"}
+                threat_level = suspect.get('threat_level', 1)
+                threat_icon = threat_colors.get(threat_level, "⚪")
+                
+                with st.expander(f"{threat_icon} **{suspect['name']}** (Threat: {threat_level})"):
+                    st.write(f"**👁️ Appearances:** {suspect.get('appearance_count', 1)}")
+                    st.write(f"**📊 Confidence:** {suspect.get('confidence_score', 0):.2f}")
+                    st.write(f"**🕒 Last Seen:** {format_timestamp(suspect.get('last_seen'))}")
+                    if suspect.get('description'):
+                        st.write(f"**📝 Notes:** {suspect['description']}")
+        else:
+            st.info("🔍 No suspects identified yet")
+            st.write("Suspects will appear here as facial recognition analysis identifies persons of interest.")
     
     # Case statistics
     if selected_case_id:
@@ -87,37 +143,57 @@ with st.sidebar:
             st.metric("Faces Detected", stats.get('faces_detected', 0))
             st.metric("Analyses Performed", stats.get('forensics_analyses', 0) + stats.get('ai_analyses', 0))
 
-# Main interface tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Case Overview", "🗂️ Evidence Files", "🕒 Timeline", "📈 Analytics", "📋 Reports"])
+# Main interface tabs with modern styling
+st.markdown("""
+<style>
+    .tab-content {
+        background: rgba(38, 39, 48, 0.3);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-top: 1rem;
+        border: 1px solid #444;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Case Dashboard", "🗂️ Evidence Files", "🕒 Timeline", "👥 Suspects", "📈 Analytics", "📋 Activity Log"])
 
 with tab1:
-    st.header("Case Overview")
+    st.markdown('<div class="tab-content">', unsafe_allow_html=True)
     
     if not selected_case_id:
-        st.info("Please select a case from the sidebar to view details.")
+        # Modern system overview
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem;">
+            <h1 style="color: #00d4aa;">🏛️ Investigation Command Center</h1>
+            <p style="color: #b0b3b8; font-size: 1.2rem;">Select a case from the sidebar to begin investigation</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Show overall system statistics
-        st.subheader("📊 System Overview")
-        
+        # System statistics with modern cards
         total_cases = len(cases) if cases else 0
         total_evidence = len(get_evidence_files()) if get_evidence_files() else 0
         
         col1, col2, col3, col4 = st.columns(4)
         
-        with col1:
-            st.metric("Total Cases", total_cases)
+        metrics = [
+            ("Total Cases", total_cases, "🗂️"),
+            ("Evidence Files", total_evidence, "📁"),
+            ("Active Cases", len([c for c in cases if c.get('status') == 'Active']) if cases else 0, "🔥"),
+            ("Avg Evidence/Case", f"{total_evidence/max(1, total_cases):.1f}", "📊")
+        ]
         
-        with col2:
-            st.metric("Total Evidence Files", total_evidence)
-        
-        with col3:
-            active_cases = len([c for c in cases if c.get('status') == 'Active']) if cases else 0
-            st.metric("Active Cases", active_cases)
-        
-        with col4:
-            if total_cases > 0:
-                avg_evidence = total_evidence / total_cases
-                st.metric("Avg Evidence per Case", f"{avg_evidence:.1f}")
+        for i, (label, value, icon) in enumerate(metrics):
+            with [col1, col2, col3, col4][i]:
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, rgba(0,212,170,0.1) 0%, rgba(0,184,148,0.1) 100%);
+                            border: 2px solid #00d4aa; border-radius: 15px; padding: 1.5rem; text-align: center;
+                            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">{icon}</div>
+                    <div style="color: #00d4aa; font-size: 1.8rem; font-weight: bold;">{value}</div>
+                    <div style="color: #fafafa; font-size: 0.9rem; margin-top: 0.5rem;">{label}</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         # Recent activity
         if cases:
@@ -455,7 +531,96 @@ with tab3:
                     st.rerun()
 
 with tab4:
-    st.header("Case Analytics")
+    st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h2 style="color: #dc143c;">👥 Suspects Management</h2>
+        <p style="color: #b0b3b8;">Track and manage persons of interest in this investigation</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not selected_case_id:
+        st.warning("⚠️ Please select a case to manage suspects")
+    else:
+        from database import get_suspects, add_suspect
+        
+        # Add new suspect
+        with st.expander("➕ **Add New Suspect**"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                suspect_name = st.text_input("🏷️ Suspect Name")
+                threat_level = st.selectbox("⚠️ Threat Level", [1, 2, 3, 4], 
+                                          format_func=lambda x: {1: "🟢 Low", 2: "🟡 Medium", 3: "🟠 High", 4: "🔴 Critical"}[x])
+                confidence = st.slider("📊 Confidence Score", 0.0, 1.0, 0.5, 0.1)
+            
+            with col2:
+                suspect_desc = st.text_area("📝 Description", height=100)
+                suspect_status = st.selectbox("Status", ["active", "detained", "cleared", "unknown"])
+            
+            if st.button("🎯 **Add Suspect**", type="primary") and suspect_name:
+                suspect_id = add_suspect(selected_case_id, suspect_name, suspect_desc, threat_level, 
+                                       confidence_score=confidence)
+                if suspect_id:
+                    from database import log_case_activity
+                    log_case_activity(selected_case_id, "suspect_added", 
+                                    f"New suspect added: {suspect_name}", 
+                                    metadata={"threat_level": threat_level, "confidence": confidence})
+                    st.success(f"✅ Suspect '{suspect_name}' added to investigation")
+                    st.rerun()
+        
+        # Display current suspects
+        suspects = get_suspects(selected_case_id)
+        
+        if suspects:
+            st.subheader(f"🎯 Current Suspects ({len(suspects)})")
+            
+            # Sort suspects by threat level and confidence
+            suspects.sort(key=lambda x: (x.get('threat_level', 1), x.get('confidence_score', 0)), reverse=True)
+            
+            for suspect in suspects:
+                threat_colors = {1: "🟢", 2: "🟡", 3: "🟠", 4: "🔴"}
+                threat_labels = {1: "Low", 2: "Medium", 3: "High", 4: "Critical"}
+                threat_level = suspect.get('threat_level', 1)
+                threat_icon = threat_colors.get(threat_level, "⚪")
+                threat_label = threat_labels.get(threat_level, "Unknown")
+                
+                with st.expander(f"{threat_icon} **{suspect['name']}** - {threat_label} Threat"):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("👁️ Appearances", suspect.get('appearance_count', 1))
+                        st.metric("📊 Confidence", f"{suspect.get('confidence_score', 0):.2f}")
+                    
+                    with col2:
+                        st.write(f"**🕒 First Seen:** {format_timestamp(suspect.get('first_seen'))}")
+                        st.write(f"**🕒 Last Seen:** {format_timestamp(suspect.get('last_seen'))}")
+                        st.write(f"**📋 Status:** {suspect.get('status', 'unknown').title()}")
+                    
+                    with col3:
+                        if suspect.get('photo_filename'):
+                            st.write(f"**📷 Photo:** {suspect['photo_filename']}")
+                        
+                        # Action buttons
+                        if st.button(f"🔍 Investigate {suspect['name']}", key=f"investigate_{suspect['id']}"):
+                            st.info(f"Investigation view for {suspect['name']} would open here")
+                    
+                    if suspect.get('description'):
+                        st.write(f"**📝 Description:** {suspect['description']}")
+        else:
+            st.markdown("""
+            <div style="text-align: center; padding: 3rem; background: rgba(38, 39, 48, 0.3); 
+                        border-radius: 10px; border: 2px dashed #444;">
+                <h3 style="color: #888;">🔍 No Suspects Identified</h3>
+                <p style="color: #666;">Suspects will appear here as facial recognition and analysis identify persons of interest</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with tab5:
+    st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+    st.header("📈 Case Analytics")
     
     if not selected_case_id:
         st.info("Please select a case to view analytics.")
@@ -550,7 +715,106 @@ with tab4:
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-with tab5:
+with tab6:
+    st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h2 style="color: #00d4aa;">📋 Case Activity Log</h2>
+        <p style="color: #b0b3b8;">Complete chronological record of all investigation activities</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not selected_case_id:
+        st.warning("⚠️ Please select a case to view activity log")
+    else:
+        from database import get_case_activity_log
+        
+        # Get activity log
+        activities = get_case_activity_log(selected_case_id, limit=100)
+        
+        if activities:
+            # Activity summary
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("📝 Total Activities", len(activities))
+            
+            with col2:
+                today_activities = len([a for a in activities 
+                                     if a.get('created_at') and 
+                                     a['created_at'].date() == datetime.now().date()])
+                st.metric("📅 Today's Activities", today_activities)
+            
+            with col3:
+                activity_types = len(set(a.get('activity_type') for a in activities))
+                st.metric("🔄 Activity Types", activity_types)
+            
+            # Activity timeline
+            st.subheader("🕒 Activity Timeline")
+            
+            # Group activities by date
+            from collections import defaultdict
+            activities_by_date = defaultdict(list)
+            
+            for activity in activities:
+                if activity.get('created_at'):
+                    date_key = activity['created_at'].date()
+                    activities_by_date[date_key].append(activity)
+            
+            # Display activities by date (most recent first)
+            for date, day_activities in sorted(activities_by_date.items(), reverse=True):
+                st.markdown(f"""
+                <div style="background: rgba(0, 212, 170, 0.1); border-left: 4px solid #00d4aa; 
+                            padding: 1rem; margin: 1rem 0; border-radius: 0 8px 8px 0;">
+                    <h4 style="color: #00d4aa; margin: 0;">{date.strftime('%B %d, %Y')} ({len(day_activities)} activities)</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                for activity in sorted(day_activities, key=lambda x: x.get('created_at', ''), reverse=True):
+                    activity_icons = {
+                        'case_created': '🆕',
+                        'case_opened': '📂',
+                        'evidence_uploaded': '📁',
+                        'analysis_completed': '🔍',
+                        'suspect_added': '👤',
+                        'report_generated': '📊',
+                        'case_updated': '✏️',
+                        'default': '📝'
+                    }
+                    
+                    activity_type = activity.get('activity_type', 'unknown')
+                    icon = activity_icons.get(activity_type, activity_icons['default'])
+                    timestamp = activity.get('created_at')
+                    user_name = activity.get('user_name', 'System')
+                    description = activity.get('description', 'No description')
+                    
+                    time_str = timestamp.strftime('%H:%M:%S') if timestamp else 'Unknown time'
+                    
+                    st.markdown(f"""
+                    <div style="margin: 0.5rem 0; padding: 1rem; background: rgba(38, 39, 48, 0.5); 
+                                border-radius: 8px; border-left: 3px solid #444;">
+                        <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                            <span style="font-size: 1.5rem; margin-right: 0.5rem;">{icon}</span>
+                            <strong style="color: #fafafa;">{time_str}</strong>
+                            <span style="color: #888; margin-left: auto;">{user_name}</span>
+                        </div>
+                        <p style="color: #b0b3b8; margin: 0;">{description}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        else:
+            st.markdown("""
+            <div style="text-align: center; padding: 3rem; background: rgba(38, 39, 48, 0.3); 
+                        border-radius: 10px; border: 2px dashed #444;">
+                <h3 style="color: #888;">📝 No Activity Recorded</h3>
+                <p style="color: #666;">Case activities will appear here as investigation progresses</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+# Rest of tabs...
+with st.expander("📊 **Case Reports**"):
     st.header("Case Reports")
     
     if not selected_case_id:
