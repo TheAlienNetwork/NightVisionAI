@@ -1,0 +1,43 @@
+modules = ["python-3.11"]
+[agent]
+integrations = ["python_openai:1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["cairo", "ffmpeg-full", "file", "freetype", "ghostscript", "glibcLocales", "gobject-introspection", "gtk3", "lcms2", "libGL", "libGLU", "libarchive", "libimagequant", "libjpeg", "libjpeg_turbo", "libpng", "libtiff", "libwebp", "libxcrypt", "openjpeg", "pkg-config", "qhull", "tcl", "tk", "unrar", "which", "zlib"]
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["streamlit", "run", "app.py", "--server.port", "5000"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Investigative Platform"
+
+[[workflows.workflow]]
+name = "Investigative Platform"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "streamlit run app.py --server.port 5000"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 44907
+externalPort = 3000
