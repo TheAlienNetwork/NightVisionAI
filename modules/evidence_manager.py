@@ -14,6 +14,7 @@ class EvidenceManager:
         self.case_statuses = ['Active', 'Closed', 'On Hold', 'Under Review']
         self.evidence_categories = ['Image', 'Video', 'Document', 'Audio', 'Dataset', 'Other']
         self.priority_levels = {1: 'Low', 2: 'Medium', 3: 'High', 4: 'Critical'}
+        self.incident_types = ['Theft', 'Assault', 'Burglary', 'Vandalism', 'Drug Activity', 'Fraud', 'Missing Person', 'Traffic Violation', 'Domestic Violence', 'Cyber Crime', 'Other']
 
     def create_new_case(self, case_name: str, description: str, priority: int = 2) -> Optional[int]:
         """Create a new investigation case"""

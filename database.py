@@ -865,12 +865,12 @@ def display_dashboard():
                             # This part needs to be carefully integrated with file analysis
                             # For now, let's assume metadata is extracted and we're storing it.
                             # A more robust solution would involve separate functions for each analysis type.
-                            
+
                             # Placeholder for metadata extraction and storing in forensics_results
                             # In a real scenario, you would call specific functions here to extract metadata,
                             # perform integrity checks, timeline analysis, etc.
                             # For this example, we'll simulate saving some basic info.
-                            
+
                             # --- Begin simulated forensics data storage ---
                             simulated_metadata_extracted = {
                                 "file_name": file_info['filename'],
@@ -881,7 +881,7 @@ def display_dashboard():
                                     "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" # Example hash
                                 }
                             }
-                            
+
                             simulated_timeline_data = [
                                 {"timestamp": datetime.now().isoformat(), "event": "File Uploaded"}
                             ]
@@ -916,10 +916,17 @@ def display_dashboard():
                             # --- End simulated forensics data storage ---
 
                             # Add AI analysis results to the database
-                            ai_query = """
-                                INSERT INTO ai_analysis (file_id, analysis_type, results, confidence_score, anomalies_detected)
-                                VALUES (?, ?, ?, ?, ?)
-                            """
+                            if USE_SQLITE:
+                                ai_query = """
+                                    INSERT INTO ai_analysis (file_id, analysis_type, results, confidence_score, anomalies_detected)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """
+                            else:
+                                ai_query = """
+                                    INSERT INTO ai_analysis (file_id, analysis_type, results, confidence_score, anomalies_detected)
+                                    VALUES (%s, %s, %s, %s, %s)
+                                """
+
                             ai_params = (
                                 file_info['id'],
                                 analysis_results.get("analysis_type"),
@@ -927,6 +934,7 @@ def display_dashboard():
                                 analysis_results.get("confidence_score"),
                                 json.dumps(analysis_results.get("anomalies_detected"))
                             )
+
 
                             if USE_SQLITE:
                                 conn = get_connection()

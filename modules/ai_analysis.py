@@ -24,9 +24,17 @@ class AIAnalysisSystem:
     def analyze_image_with_ai(self, image_data: bytes, analysis_type: str = "comprehensive") -> Dict:
         """Analyze image using local computer vision and pattern recognition"""
         try:
+            # Check if image_data is empty
+            if not image_data or len(image_data) == 0:
+                return {'error': 'Empty image data provided', 'analysis_type': analysis_type}
+            
             # Convert bytes to OpenCV image
             nparr = np.frombuffer(image_data, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if image is None:
+                return {'error': 'Failed to decode image data', 'analysis_type': analysis_type}
+            
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
             # Perform comprehensive computer vision analysis
@@ -136,9 +144,17 @@ class AIAnalysisSystem:
     def detect_objects_opencv(self, image_data: bytes) -> Dict:
         """Detect objects using OpenCV's built-in classifiers"""
         try:
+            # Check if image_data is empty
+            if not image_data or len(image_data) == 0:
+                return {'error': 'Empty image data provided'}
+            
             # Convert bytes to cv2 image
             nparr = np.frombuffer(image_data, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if image is None:
+                return {'error': 'Failed to decode image data'}
+            
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
             detections = {}

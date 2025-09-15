@@ -678,7 +678,7 @@ with tab3:
             col1, col2 = st.columns(2)
             
             with col1:
-                incident_type = st.selectbox("Incident Type", st.session_state.evidence_manager.evidence_manager.incident_types)
+                incident_type = st.selectbox("Incident Type", st.session_state.evidence_manager.incident_types)
                 incident_date = st.datetime_input("Incident Date/Time", value=datetime.now())
                 severity = st.selectbox("Severity", [1, 2, 3, 4], 
                                       format_func=lambda x: st.session_state.evidence_manager.priority_levels[x])

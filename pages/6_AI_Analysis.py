@@ -8,6 +8,7 @@ from database import get_evidence_files, execute_query, add_evidence_file
 from utils.data_utils import format_file_size, format_timestamp, create_summary_cards, paginate_data
 from utils.image_utils import display_image_with_info, draw_bounding_boxes, create_image_grid, resize_image
 import json
+import os
 from datetime import datetime
 from PIL import Image
 import io
@@ -148,8 +149,16 @@ with tab1:
             if st.button("🚀 Start AI Analysis", type="primary"):
                 with st.spinner("Performing AI analysis..."):
                     try:
-                        # In real implementation, load file data from disk using file_path
-                        file_data = b''  # Placeholder - would load actual file data
+                        # Load actual file data from disk
+                        file_path = selected_file.get('file_path')
+                        file_data = b''
+                        if file_path and os.path.exists(file_path):
+                            try:
+                                with open(file_path, 'rb') as f:
+                                    file_data = f.read()
+                            except Exception as e:
+                                st.error(f"Failed to load file: {str(e)}")
+                                continue
                         
                         analysis_results = {
                             'file_id': selected_file['id'],
@@ -335,7 +344,8 @@ with tab2:
                                   help="Number of files to analyze simultaneously")
             
             # File selection for batch
-            start_index = st.slider("Start from file", 0, max(0, len(available_files) - batch_size), 0)
+            max_start = max(0, len(available_files) - batch_size) if len(available_files) > 0 else 0
+            start_index = st.slider("Start from file", 0, max(1, max_start), 0)
             end_index = min(start_index + batch_size, len(available_files))
             
             selected_batch_files = available_files[start_index:end_index]
